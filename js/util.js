@@ -87,6 +87,7 @@ FF.fmt = function (x, unit, digits) {
     var s = PREFIX[i][0], p = PREFIX[i][1];
     if (ax >= s) {
       var v = x / s, str;
+      if (Math.abs(v) >= 999.95 && i > 0) { v = x / PREFIX[i - 1][0]; p = PREFIX[i - 1][1]; }
       if (v >= 100) str = v.toFixed(Math.max(0, digits - 3));
       else if (v >= 10) str = v.toFixed(Math.max(0, digits - 2));
       else str = v.toFixed(Math.max(0, digits - 1));

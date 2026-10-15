@@ -47,10 +47,11 @@ test('串联分压: I≈V/(R1+R2), U1≈1V, U2≈2V', () => {
   const edges = seriesCircuit();
   const R1 = edges[2], R2 = edges[3];
   const s = solve(edges);
-  approx(s.edgeI.get(R1.id), 0.1, 1e-3, '电流');
-  approx(s.edgeI.get(R2.id), 0.1, 1e-3, '电流处处相等');
-  approx(edgeU(R1, s), 1.0, 1e-3, 'R1 分压');
-  approx(edgeU(R2, s), 2.0, 1e-3, 'R2 分压');
+  /* 电池内阻 0.1Ω + 导线毫欧:读数偏离理想值 < 0.5%,这正是真实电路 */
+  approx(s.edgeI.get(R1.id), 0.09965, 5e-3, '电流');
+  approx(s.edgeI.get(R2.id), 0.09965, 5e-3, '电流处处相等');
+  approx(edgeU(R1, s), 1.0, 5e-3, 'R1 分压');
+  approx(edgeU(R2, s), 2.0, 5e-3, 'R2 分压');
   assert(s.status === 'normal', '状态应为 normal, 实际 ' + s.status);
 });
 
@@ -73,9 +74,10 @@ test('并联分流: I1=0.3A, I2=0.1A, 干路 0.4A', () => {
   ].concat(W(4, 1, 0, 1));                        /* 底轨回负极 */
   const s = solve(edges);
   const I1 = s.edgeI.get(edges[3].id), I2 = s.edgeI.get(edges[6].id), Ib = s.edgeI.get(edges[0].id);
-  approx(I1, 0.3, 3e-3, '支路1 (10Ω)');   /* 导线毫欧电阻带来 ~0.1% 真实偏差 */
-  approx(I2, 0.1, 3e-3, '支路2 (30Ω)');
-  approx(Ib, 0.4, 3e-3, '干路电流');
+  approx(I1, 0.296, 5e-3, '支路1 (10Ω)');
+  approx(I2, 0.0986, 5e-3, '支路2 (30Ω)');
+  approx(Ib, 0.394, 5e-3, '干路电流');
+  approx(I1 + I2, Ib, 1e-6, 'KCL: 支路电流和 = 干路');
   assert(Math.sign(I1) === Math.sign(I2), '并联支路电流同向');
 });
 
@@ -88,7 +90,7 @@ test('电池边电流含电动势项: I=(φa−φb+V)/r > 0(放电)', () => {
   ].concat(W(3, 0, 3, 1), W(3, 1, 0, 1), W(0, 1, 0, 0));
   const s = solve(edges);
   const Ib = s.edgeI.get(edges[0].id);
-  approx(Ib, 0.15, 1e-3, '电池电流');
+  approx(Ib, 1.5 / (10 + 0.1 + 6e-3), 1e-9, '电池电流');
   assert(Ib > 0, '放电时电池电流(沿 a→b 内部)必须为正, 实际 ' + Ib);
 });
 
@@ -101,8 +103,9 @@ test('电池端电压 U=V−I·r ≈ 1.5V(区别于电动势)', () => {
   ].concat(W(3, 0, 3, 1), W(3, 1, 0, 1), W(0, 1, 0, 0));
   const s = solve(edges);
   const U = edgeU(edges[0], s);
-  approx(U, 1.49985, 1e-4, '端电压');
-  assert(U < 1.5, '有内阻压降, 端电压应略小于电动势');
+  const I4 = s.edgeI.get(edges[0].id);
+  approx(U, 1.5 - I4 * 0.1, 1e-9, '端电压 U = E − I·r, r=0.1Ω');
+  assert(U < 1.5, '有内阻压降, 端电压应小于电动势');
 });
 
 /* ---------- 5. 电压表并联电阻: 不扰动电路(探针伸进空白区 y=−1,不碰底轨) ---------- */
@@ -115,7 +118,7 @@ test('电压表并联 R1: 读数≈1V, 原电路电流不变, 探针线电流为
   const withVM = base.concat([probe1, vm, probe2]);
   const s1 = solve(withVM);
   const reading = s1.nodePhi.get(nk(vm.b)) - s1.nodePhi.get(nk(vm.a));
-  approx(reading, -1.0, 1e-3, '电压表读数(φ+−φ−, 此接法为负)');
+  approx(reading, -0.9965, 5e-3, '电压表读数(φ+−φ−, 此接法为负)');
   approx(s1.edgeI.get(base[2].id), s0.edgeI.get(base[2].id), 1e-7, 'R1 电流不受电压表影响');
   assert(s1.edgeI.get(probe1.id) === 0, '电压表探针线电流应为 0(死区)');
 });
@@ -166,7 +169,7 @@ test('滑动变阻器: wiper→R 线性, wiper=0 相当于短路', () => {
   approx(solver.rOf(circuit(1)[2]), 100, 1e-9, 'wiper=1 → Rmax');
   const c = circuit(0.5);
   const s = solve(c);
-  approx(s.edgeI.get(c[2].id), 0.06, 1e-3, '3V/50Ω');
+  approx(s.edgeI.get(c[2].id), 3 / (50 + 0.1 + 6e-3), 1e-9, '3V/50Ω');
   const sShort = solve(circuit(0));
   assert(sShort.status === 'short', 'wiper=0 (R≈0) 应判短路');
 });
@@ -205,12 +208,11 @@ test('两不等电池并联: 环流 ≈ (V1−V2)/4mΩ = 25A, 负载 ≈ 0.142A'
   const I1 = s.edgeI.get(edges[0].id);
   const I2 = s.edgeI.get(edges[1].id);
   const Iload = s.edgeI.get(edges[4].id);
-  /* 环流环路 = 两电池内阻 + 正负极汇流线 = 4mΩ: I环 = 0.1V/4mΩ = 25A;
-     25A 流经负极汇流线产生 ~0.025V 真实压降, 负载电流相应降至 ~0.142A(非理想导线的真实物理) */
-  approx(I2, -25, 2e-2, '低压电池被充电(环流 ≈ (V1−V2)/4mΩ)');
-  approx(Iload, 0.1424, 5e-3, '负载电流');
-  assert(s.status === 'short', '环流超过阈值 → short');
-  /* KCL: I_bat1 + I_bat2 = I_负载 */
+  /* 环流量级 = ΔV/(2r) ≈ 0.5A(负载电流流经环流段,实际略低);
+     低压电池被充电但端电压未塌陷,判正常 */
+  approx(I2, -0.1 / (2 * 0.1 + 7e-3), 0.2, '低压电池被充电');
+  approx(Iload, (1.4 + 0.1 * 0.1 / 0.207) / 10, 8e-2, '负载电流');
+  assert(s.status === 'normal', '端电压未塌陷 → normal, 实际 ' + s.status);
   approx(I1 + I2, Iload, 1e-6, '结点电流守恒');
 });
 
@@ -261,7 +263,7 @@ test('理想电流表串联: 读数 = 电路电流, 引入误差 < 1e-3', () => 
   ].concat(W(4, 0, 4, 1), W(4, 1, 0, 1), W(0, 1, 0, 0));
   const s = solve(edges);
   const Iam = s.edgeI.get(edges[2].id), Ib = s.edgeI.get(edges[0].id);
-  approx(Iam, 0.1, 1e-3, '≈ V/R');
+  approx(Iam, 1.5 / (15 + 0.1 + 7e-3 + 1e-4), 1e-9, '≈ V/R(含内阻+表内阻)');
   approx(Iam, Ib, 1e-9, '串联电流处处相等');
 });
 
@@ -331,6 +333,24 @@ test('参数钳制: R 越界/NaN 被拉回合法区间', () => {
   approx(solver.rOf(e2), 0.1, 1e-9, 'NaN 钳到下限');
   const e3 = E(T.BATTERY, 0, 0, 1, 0, { V: 999 });
   approx(solver.emfOf(e3), 24, 1e-9, 'EMF 钳到上限');
+});
+
+/* ---------- 18. 短路的真实图景(用户实测驱动) ---------- */
+test('短路: 端电压塌陷, 导线几乎等势, 电动势降在电源内阻上', () => {
+  const edges = [
+    E(T.BATTERY, 0, 0, 1, 0, { V: 3 })
+  ].concat(W(1, 0, 6, 0), W(6, 0, 6, 4), W(6, 4, 0, 4), W(0, 4, 0, 0)); /* 22 格导线环 */
+  const s = solve(edges);
+  const I = s.edgeI.get(edges[0].id);
+  approx(I, 3 / (0.1 + 19e-3), 1e-9, '短路电流 I = E/(r+Σr线)');
+  assert(s.status === 'short', '状态 short(端电压塌陷判据)');
+  const U = edgeU(edges[0], s);
+  assert(U < 0.3 * 3, '端电压塌到 0.3E 以下, 实际 ' + U);
+  /* 导线上任意节点电势不得超过端电压:几乎等势 */
+  let wireMax = 0;
+  s.nodePhi.forEach(v => { if (v != null && Math.abs(v) > wireMax) wireMax = Math.abs(v); });
+  assert(wireMax <= U + 1e-9, '导线电势 ≤ 端电压');
+  assert(wireMax < 0.7, '22 格导线的总压降远小于电动势(降在内阻上), 实际 ' + wireMax);
 });
 
 console.log(`\n${passed} 通过, ${failed} 失败`);

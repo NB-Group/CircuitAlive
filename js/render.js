@@ -198,14 +198,14 @@ function syncSolution() {
   R.layers.readings.innerHTML = '';
   R.gradGroup.innerHTML = '';
 
-  var lampPMax = 0, lampP = new Map();
+  /* 灯泡亮度按绝对功率:P_ref = 3V 额定(9/R)。短路时唯一的灯也必须暗下去 */
+  var lampP = new Map();
   m.edges.forEach(function (e) {
     if (e.type !== T.LAMP) return;
     var I = sol.edgeI.get(e.id);
     var U = FF.solver.edgeU(e, sol);
     var P = (I == null || U == null) ? 0 : Math.abs(U * I);
-    lampP.set(e.id, P);
-    if (P > lampPMax) lampPMax = P;
+    lampP.set(e.id, P / (9 / FF.solver.rOf(e)));
   });
 
   m.edges.forEach(function (e) {
@@ -218,10 +218,7 @@ function syncSolution() {
     /* 动态部件 */
     if (e.type === T.SWITCH) FF.symbols.setLever(rec.hooks.lever, !!e.props.closed);
     if (e.type === T.RHEOSTAT) FF.symbols.setWiper(rec.hooks.wiper, e.props.wiper);
-    if (e.type === T.LAMP) {
-      var k = lampPMax > 1e-9 ? lampP.get(e.id) / lampPMax : 0;
-      FF.symbols.setGlow(rec.hooks.glow, k);
-    }
+    if (e.type === T.LAMP) FF.symbols.setGlow(rec.hooks.glow, lampP.get(e.id) || 0);
 
     /* 仪表读数(符号下方/右侧,恒正立;画布上显示偏转幅值,带符号值见右侧面板) */
     if (e.type === T.AMMETER || e.type === T.VOLTMETER) {

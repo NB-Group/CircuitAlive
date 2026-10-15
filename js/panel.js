@@ -21,7 +21,7 @@ function $(id) { return document.getElementById(id); }
 
 /* 严格定义式(工具的灵魂:用高中的可定义概念讲初中的元件) */
 var DEFS = {};
-DEFS[T.BATTERY] = '<b>电动势 E</b>:电源内非静电力把单位正电荷从负极移到正极所做的功(单位 V)。端电压 <b>U = E − I·r</b>,内阻 r 很小,故 U 略小于 E。';
+DEFS[T.BATTERY] = '<b>电动势 E</b>:电源内非静电力把单位正电荷从负极移到正极所做的功(单位 V)。闭合电路欧姆定律 <b>U = E − I·r</b>:内阻 r 默认 0.1 Ω(真实干电池量级,可在下方修改)。短路时电流只受 r 限制,电动势几乎全降在电源内部,端电压≈0、导线几乎等势。';
 DEFS[T.WIRE] = '理想导线的严格含义是<b>等势体</b>:两端 U = 0,内部 E = 0。本模型给每格导线 1 mΩ(否则电池被 0Ω 短接时方程无解);0.3 A 时每格压降仅 0.3 mV,比真实铜导线还小 —— 显示精度内处处等势。';
 DEFS[T.RESISTOR] = '电阻定义式 <b>R = U/I</b>:这个比值由导体本身(材料、长度、横截面积)决定 —— U/I 只是<b>量度</b>它,不是电压"产生"了电阻。';
 DEFS[T.LAMP] = '灯泡亮度由<b>实际功率 P = U·I</b> 决定,不是由电流或电压单独决定。';
@@ -47,7 +47,7 @@ function labelEdges(model) {
 var STATE_TEXT = {
   normal: '电路闭合。正电荷从电池正极经外电路流向负极(朱红粒子即为电流方向)。电流处处遵循 I = q/t。',
   open: '<span class="em-amber">断路</span>:回路不闭合,处处 I = 0。<b>点击开关符号中部即可闭合它</b>;也要检查导线是否首尾相接。注意此时断开处两端的电压 ≈ 电源电动势 —— 把电压表并在断开的开关上就能测出来。',
-  short: '<span class="em">电源被短接!</span>电流不经任何用电器、只沿导线回到负极,I = E/r 达到极大 —— 这是电源烧毁甚至起火的原因。被短路的灯泡全部熄灭。',
+  short: '<span class="em">电源被短接!</span>电流不经过任何用电器,只受内阻限制(I ≈ E/r,几十安培)。电动势几乎全部降在电源<b>内部</b>,端电压塌到接近 0,导线近似等势,灯全灭 —— 现实中这就是电源烧毁起火的原因。',
   noSource: '画布上没有电源:没有电动势,就没有电流。',
   empty: '空画布:从左侧元件栏选择<b>电池</b>,点击网格边放置,再用导线连成回路。'
 };
@@ -156,6 +156,9 @@ function renderInspector(model, sol, labels) {
     box.appendChild(numRow('电动势 E', 'V', P.V || 3, 0.1, 24, 0.1, function (v) {
       setProp({ V: FF.clamp(v || 1.5, FF.LIMITS.V[0], FF.LIMITS.V[1]) });
     }));
+    box.appendChild(numRow('内阻 r', 'Ω', P.r == null ? 0.1 : P.r, 0.01, 50, 0.01, function (v) {
+      setProp({ r: FF.clamp(v || 0.1, 0.01, 50) });
+    }));
   }
   if (e.type === T.RESISTOR || e.type === T.LAMP) {
     box.appendChild(numRow('电阻 R', 'Ω', P.R || 10, 0.1, 9999, 0.5, function (v) {
@@ -215,6 +218,7 @@ function renderInspector(model, sol, labels) {
     var E = FF.solver.emfOf(e);
     html += kv('端电压 U', U == null ? '—' : FF.fmt(U, 'V'));
     html += kv('电动势 E', FF.fmt(E, 'V'));
+    html += kv('内阻 r', FF.fmt(FF.solver.rOf(e), 'Ω'));
     html += kv('电流 I', I == null ? '—' : FF.fmt(I, 'A'));
     html += kv('输出功率', (I == null || U == null) ? '—' : FF.fmt(Math.abs(U * I), 'W'));
   } else if (e.type === T.RESISTOR || e.type === T.LAMP || e.type === T.RHEOSTAT) {

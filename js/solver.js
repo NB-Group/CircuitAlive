@@ -19,7 +19,7 @@ var T = FF.T;
 
 /* 内部小电阻。注意:导线电阻不得低于 1e-3,再低会破坏数值条件 */
 var R_WIRE = 1e-3;
-var R_BAT = 1e-3;
+var R_BAT = 0.1;      /* 真实干电池量级:内阻远大于导线,短路时压降在电池内部 */
 var R_AM = 1e-4;
 
 var SHORT_I = 20;   /* 任一支路 |I| 超过此值 → 判定短路 */
@@ -38,7 +38,7 @@ function rOf(e) {
     case T.WIRE: return R_WIRE;
     case T.SWITCH: return p.closed ? R_WIRE : Infinity;
     case T.AMMETER: return R_AM;
-    case T.BATTERY: return R_BAT;
+    case T.BATTERY: return clampNum((p.r == null ? R_BAT : p.r), 0.01, 50);
     case T.RESISTOR:
     case T.LAMP: return clampNum(p.R, FF.LIMITS.R[0], FF.LIMITS.R[1]);
     case T.RHEOSTAT: {
@@ -226,10 +226,20 @@ function solve(edges) {
   });
   res.phiMax = pmax; res.phiMin = pmin;
 
-  /* 状态判定:短路 > 断路 > 正常 */
+  /* 状态判定:短路 > 断路 > 正常。
+     短路两条判据:任一支路 |I|>20A(汇流环流),或电池端电压塌陷
+     (|I|>0.1A 且 U<0.3E)——内阻真实化后,短路电流 ~14A 不再触发绝对阈值,
+     但端电压塌到接近 0 是更本质的特征。 */
   var anyShort = false;
   res.edgeI.forEach(function (I) {
     if (I != null && Math.abs(I) > SHORT_I) anyShort = true;
+  });
+  if (!anyShort) edges.forEach(function (e) {
+    if (e.type !== T.BATTERY) return;
+    var I = res.edgeI.get(e.id);
+    if (I == null || Math.abs(I) <= 0.1) return;
+    var U = Math.abs(edgeU(e, res)), E = emfOf(e);
+    if (U < 0.3 * E) anyShort = true;
   });
   if (!hasBattery) res.status = 'noSource';
   else if (anyShort) res.status = 'short';
