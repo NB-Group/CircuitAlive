@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>drag-test</title></head>
+<body>
+<div id="result">RUNNING</div>
+<svg id="canvas" xmlns="http://www.w3.org/2000/svg" width="920" height="640">
+  <defs id="layer-defs"></defs>
+  <g id="layer-paper"></g>
+  <g id="layer-underlay"></g>
+  <g id="layer-edges"></g>
+  <g id="layer-junctions"></g>
+  <g id="layer-efield"></g>
+  <g id="layer-readings"></g>
+  <g id="layer-particles"></g>
+  <g id="layer-overlay"></g>
+</svg>
+<div id="empty-hint"></div>
+<div id="status-hint"></div>
+<script src="../js/util.js"></script>
+<script src="../js/solver.js"></script>
+<script src="../js/model.js"></script>
+<script src="../js/symbols.js"></script>
+<script src="../js/render.js"></script>
+<script src="../js/interact.js"></script>
+<script src="../js/panel.js"></script>
+<script src="../js/presets.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var out = [];
+  function log(s) { out.push(s); }
+  try {
+    var model = new FF.Model();
+    FF.render.setModel(model);
+    var svg = document.getElementById('canvas');
+    FF.render.init(svg);
+
+    /* ---- 用例 0:视图映射无 letterbox 偏移(打桩前测真实 screenToWorld) ---- */
+    var rect0 = svg.getBoundingClientRect();
+    var br = FF.render.screenToWorld(rect0.right, rect0.bottom);
+    var v0 = FF.render.view();
+    var mapErr = Math.abs(br.x - (v0.x + v0.w)) + Math.abs(br.y - (v0.y + v0.h));
+    log('case0 视图映射: 右下角误差=' + mapErr.toFixed(2) + '世界单位 (h=' + v0.h.toFixed(0) + ', 元素比=' + (rect0.height / rect0.width).toFixed(3) + ')');
+
+    /* 合成事件:clientX/Y 直接当作世界坐标 */
+    FF.render.screenToWorld = function (x, y) { return { x: x, y: y }; };
+
+    /* 直接走正式 init(页面里有 status-hint 等 DOM 依赖,均存在) */
+    FF.interact.init(svg, model);
+    FF.bus.on('changed', function () {
+      FF.render.setSolution(FF.solver.solve(model.list()));
+      FF.render.syncStructure();
+      FF.render.syncSolution();
+    });
+    FF.bus.emit('changed');
+
+    model.loadPreset(FF.presets[0].tuples); /* 串联预置 */
+
+    function fire(target, type, x, y) {
+      target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, cancelable: true, pointerId: 7, button: 0, buttons: 1,
+        clientX: x, clientY: y, isPrimary: true
+      }));
+    }
+
+    /* ---- 用例 1:L 形拖画:从电池正极 (2,1) 拖到 (5,3) ---- */
+    FF.interact.setTool('wire');
+    var before = model.edges.size;
+    fire(svg, 'pointerdown', 2 * 40, 1 * 40);
+    fire(window, 'pointermove', 5 * 40, 1 * 40);
+    fire(window, 'pointermove', 5 * 40, 3 * 40);
+    fire(window, 'pointerup', 5 * 40, 3 * 40);
+
+    var expect = [[2,1,3,1],[3,1,4,1],[4,1,5,1],[5,1,5,2],[5,2,5,3]];
+    var missing = expect.filter(function (s) {
+      return !model.edges.has(FF.edgeKey([s[0], s[1]], [s[2], s[3]]));
+    });
+    log('case1 L拖画: 新增边=' + (model.edges.size - before) + ' 期望5 缺失=' + JSON.stringify(missing));
+
+    /* 连通性:新路径必须接到电路里 —— (2,1) 是电池正极 */
+    var adj = model.adjacency();
+    log('case1 连通: (2,1)度=' + adj.get('2,1').length + ' (5,3)度=' + (adj.get('5,3') ? adj.get('5,3').length : '无'));
+
+    /* ---- 用例 2:单击空边放一段 ---- */
+    var b2 = model.edges.size;
+    fire(svg, 'pointerdown', 7 * 40, 5 * 40);
+    fire(window, 'pointerup', 7 * 40, 5 * 40);
+    var placed2 = model.edges.has(FF.edgeKey([7,5], [8,5])) || model.edges.has(FF.edgeKey([7,5], [7,6])) ||
+                  model.edges.has(FF.edgeKey([7,5], [6,5])) || model.edges.has(FF.edgeKey([7,5], [7,4]));
+    log('case2 单击放段: 新增=' + (model.edges.size - b2) + ' 落在(7,5)邻边=' + placed2);
+
+    /* ---- 用例 3:元件放空边 ---- */
+    FF.interact.setTool('battery', { V: 3 });
+    var b3 = model.edges.size;
+    fire(svg, 'pointerdown', 7 * 40, 5 * 40);
+    fire(window, 'pointerup', 7 * 40, 5 * 40);
+    var hasBat = false;
+    model.edges.forEach(function (e) { if (e.type === 'battery' && Math.abs(e.a[0] - 7) + Math.abs(e.a[1] - 5) <= 1) hasBat = true; });
+    log('case3 元件空边放置: 变化=' + (model.edges.size - b3) + ' 电池落在(7,5)附近=' + hasBat);
+
+    /* ---- 用例 4:撤销恢复 L 拖画(一次手势=一次undo) ---- */
+    var u = model.undoStack.length;
+    model.undo();
+    log('case4 undo: 栈=' + u + ' → 撤销后边数=' + model.edges.size);
+
+    /* ---- 用例 5:斜向拖动 → 仍是直角 L ---- */
+    FF.interact.setTool('wire');
+    fire(svg, 'pointerdown', 8 * 40, 5 * 40);
+    fire(window, 'pointermove', 11 * 40, 7 * 40);   /* 直接斜拖 */
+    fire(window, 'pointerup', 11 * 40, 7 * 40);
+    var diag = [[8,5,9,5],[9,5,10,5],[10,5,11,5],[11,5,11,6],[11,6,11,7]];
+    var miss5 = diag.filter(function (s) {
+      return !model.edges.has(FF.edgeKey([s[0], s[1]], [s[2], s[3]]));
+    });
+    log('case5 斜拖直角: 缺失=' + JSON.stringify(miss5));
+    /* ---- 用例 6:任意工具下点开关中部 → 开合,电路接通 ---- */
+    FF.interact.setTool('wire');   /* 故意拿着导线工具 */
+    var swKey = FF.edgeKey([3, 1], [4, 1]);
+    log('case6 前置: 开关存在=' + !!model.edges.get(swKey) + ' 闭合=' + (model.edges.get(swKey) || { props: {} }).props.closed);
+    fire(svg, 'pointerdown', 3.5 * 40, 1 * 40);
+    fire(window, 'pointerup', 3.5 * 40, 1 * 40);
+    var swAfter = model.edges.get(swKey);
+    var sol6 = FF.solver.solve(model.list());
+    log('case6 开关开合: 闭合=' + (swAfter && swAfter.props.closed) + ' 电路状态=' + sol6.status);
+
+    /* ---- 用例 7:渲染中点回归 —— 导线笔画必须骑在格线上 ---- */
+    var wkey = FF.edgeKey([5, 1], [5, 2]);
+    var rec7 = null;
+    model.edges.forEach(function (e) { if (e.key === wkey) rec7 = e; });
+    var grp = document.querySelectorAll('#layer-edges .edge-group');
+    var foundMid = false;
+    grp.forEach(function (g) {
+      var tr = g.getAttribute('transform') || '';
+      if (tr.indexOf('translate(200,60)') >= 0) foundMid = true;  /* (5,1)-(5,2) 中点 = (100,60) */
+    });
+    log('case7 中点渲染: 边(5,1)-(5,2)中心=(200,60) 找到=' + foundMid);
+  } catch (err) {
+    log('EXCEPTION: ' + (err && err.stack || err));
+  }
+  document.getElementById('result').textContent = 'DONE | ' + out.join(' | ');
+});
+</script>
+</body>
+</html>
