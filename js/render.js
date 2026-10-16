@@ -340,10 +340,11 @@ var lampAnims = new Map();   /* edgeId -> {el, target, cur, applied} */
 var prevLive = false;
 var rampT0 = -1;         /* 通电时刻;<0 表示无过渡 */
 
-/* 通电加速曲线:闭合开关瞬间,电流从 0 加速到稳态 */
+/* 通电加速曲线:信号在导线中以 ~2/3c 建立,近乎瞬间;
+   180ms 的加速只是视觉上的"来电"生命感,不冒充物理过程 */
 function energizeRamp(now) {
   if (rampT0 < 0) return 1;
-  var t = Math.min(1, (now - rampT0) / 450);
+  var t = Math.min(1, (now - rampT0) / 180);
   return 1 - Math.pow(1 - t, 2.2);
 }
 

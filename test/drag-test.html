@@ -168,6 +168,20 @@ document.addEventListener('DOMContentLoaded', function () {
     var pinchClean = model.edges.size === b9b;
 
     log('case9 触摸放置: 单指点击放置=' + tapPlaced + ' 捏合后无残留元件=' + pinchClean);
+
+    /* ---- 用例 10:杠杆补间采样(x2 随帧变化,应为序列而非瞬移) ---- */
+    var swEdge = null;
+    model.edges.forEach(function (e2) { if (e2.type === 'switch' && !swEdge) swEdge = e2; });
+    if (swEdge) {
+      var lever = document.querySelector('#layer-edges [data-hook="lever"]');
+      var samples = [];
+      model.toggleSwitch(swEdge.key);
+      (function sample() {
+        if (lever) samples.push(Number(lever.getAttribute('x2')).toFixed(2));
+        if (samples.length < 14) requestAnimationFrame(sample);
+        else document.getElementById('result').textContent += ' | case10 杠杆补间: x2序列=' + samples.join(',') + ' ' + (samples.filter(function (v, i) { return i && v !== samples[i - 1]; }).length > 1 ? '(有动画)' : '(瞬移!)');
+      })();
+    }
   } catch (err) {
     log('EXCEPTION: ' + (err && err.stack || err));
   }

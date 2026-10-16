@@ -124,7 +124,7 @@ FF.symbols = {
 
   /* ---- 动态部件原位更新 ---- */
 
-  /* 开关杠杆:130ms 缓动补间 */
+  /* 开关杠杆:240ms 带过冲回弹(闸刀合闸的机械甩动) */
   setLever: function (hookEl, closed) {
     if (!hookEl) return;
     var to = closed ? { x: 7, y: 0 } : { x: 5.4, y: -8.5 };
@@ -136,8 +136,10 @@ FF.symbols = {
     if (hookEl.__raf) cancelAnimationFrame(hookEl.__raf);
     var t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
     function frame(now) {
-      var t = Math.min(1, ((now || t0 + 130) - t0) / 130);
-      var e = 1 - Math.pow(1 - t, 3);
+      var t = Math.min(1, ((now || t0 + 240) - t0) / 240);
+      /* easeOutBack:冲过头一点再回位 */
+      var c1 = 1.70158, c3 = c1 + 1;
+      var e = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
       hookEl.setAttribute('x2', from.x + (to.x - from.x) * e);
       hookEl.setAttribute('y2', from.y + (to.y - from.y) * e);
       if (t < 1) hookEl.__raf = requestAnimationFrame(frame);
