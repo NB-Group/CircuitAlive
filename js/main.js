@@ -177,6 +177,11 @@ function wireActions() {
 
 /* ---------- 启动 ---------- */
 
+/* iOS Safari 偶尔无视 touch-action,显式拦掉系统捏合 */
+['gesturestart', 'gesturechange', 'gestureend'].forEach(function (ev) {
+  document.addEventListener(ev, function (e) { e.preventDefault(); }, { passive: false });
+});
+
 document.addEventListener('DOMContentLoaded', function () {
   model = new FF.Model();
   FF.render.setModel(model);

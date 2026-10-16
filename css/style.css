@@ -27,6 +27,7 @@
 html, body {
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;   /* 禁下拉刷新/回弹,避免和画布平移打架 */
 }
 
 body {
@@ -251,6 +252,7 @@ main {
   background: var(--paper-panel);
   border-left: 1px solid var(--hairline);
   overflow-y: auto;
+  overscroll-behavior: contain;   /* 面板滚到底不带动页面 */
   padding-bottom: 24px;
 }
 
