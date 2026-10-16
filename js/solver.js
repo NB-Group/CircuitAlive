@@ -2,8 +2,9 @@
  *
  * 物理模型:
  *  - 参与求解的边都是"电阻 + (电池的)诺顿电流源",整体是 SPD 线性系统;
- *  - 导线电阻可设:默认 1 mΩ;设为 0 = 理想导线(等势体),走超节点合并,
- *    不进矩阵(0Ω 直接进矩阵会奇异);理想导线内的电流由 KCL 流量路由补算;
+ *  - 导线默认理想(r=0,等势体):两端点合并为超节点,不进矩阵(0Ω 直接
+ *    进矩阵会奇异);理想导线内的电流由 KCL 最短路路由补算。
+ *    需要模拟真实导线时可给单根导线设 r > 0;
  *  - 电压表、断开的开关不进求解(开路);
  *  - 连通分量仅在含电池时才求解(无源孤岛是奇异拉普拉斯矩阵,直接跳过);
  *  - 电池 a 端为负极、b 端为正极,电动势把电势从 a 抬到 b。
@@ -19,7 +20,7 @@ var FF = global.FF || (global.FF = {});
 var T = FF.T;
 
 /* 导线默认 1 mΩ(不得更低:数值条件);电池内阻取真实干电池量级 */
-var R_WIRE = 1e-3;
+var R_WIRE = 1e-3;   /* 显式指定导线电阻时的下限;默认导线是理想的(r=0,超节点合并) */
 var R_BAT = 0.1;
 var R_AM = 1e-4;
 
@@ -37,9 +38,7 @@ function rOf(e) {
   var p = e.props || {};
   switch (e.type) {
     case T.WIRE:
-      if (p.r === 0) return 0;                       /* 理想导线 */
-      if (p.r == null) return R_WIRE;
-      return clampNum(p.r, 1e-3, 50);
+      return (p.r == null || p.r === 0) ? 0 : clampNum(p.r, 1e-3, 50);  /* 默认即理想 */
     case T.SWITCH: return p.closed ? R_WIRE : Infinity;
     case T.AMMETER: return R_AM;
     case T.BATTERY: return clampNum((p.r == null ? R_BAT : p.r), 0.01, 50);

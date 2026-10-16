@@ -47,11 +47,11 @@ test('串联分压: I≈V/(R1+R2), U1≈1V, U2≈2V', () => {
   const edges = seriesCircuit();
   const R1 = edges[2], R2 = edges[3];
   const s = solve(edges);
-  /* 电池内阻 0.1Ω + 导线毫欧:读数偏离理想值 < 0.5%,这正是真实电路 */
-  approx(s.edgeI.get(R1.id), 0.09965, 5e-3, '电流');
-  approx(s.edgeI.get(R2.id), 0.09965, 5e-3, '电流处处相等');
-  approx(edgeU(R1, s), 1.0, 5e-3, 'R1 分压');
-  approx(edgeU(R2, s), 2.0, 5e-3, 'R2 分压');
+  /* 只剩电池内阻 0.1Ω:I = 3/30.1,分压比精确 1:2 */
+  approx(s.edgeI.get(R1.id), 3 / 30.1, 1e-9, '电流');
+  approx(s.edgeI.get(R2.id), 3 / 30.1, 1e-9, '电流处处相等');
+  approx(edgeU(R1, s), 30 / 30.1, 1e-9, 'R1 分压(精确)');
+  approx(edgeU(R2, s), 60 / 30.1, 1e-9, 'R2 分压(精确)');
   assert(s.status === 'normal', '状态应为 normal, 实际 ' + s.status);
 });
 
@@ -90,7 +90,7 @@ test('电池边电流含电动势项: I=(φa−φb+V)/r > 0(放电)', () => {
   ].concat(W(3, 0, 3, 1), W(3, 1, 0, 1), W(0, 1, 0, 0));
   const s = solve(edges);
   const Ib = s.edgeI.get(edges[0].id);
-  approx(Ib, 1.5 / (10 + 0.1 + 6e-3), 1e-9, '电池电流');
+  approx(Ib, 1.5 / 10.1, 1e-9, '电池电流(导线理想,只有内阻)');
   assert(Ib > 0, '放电时电池电流(沿 a→b 内部)必须为正, 实际 ' + Ib);
 });
 
@@ -169,21 +169,23 @@ test('滑动变阻器: wiper→R 线性, wiper=0 相当于短路', () => {
   approx(solver.rOf(circuit(1)[2]), 100, 1e-9, 'wiper=1 → Rmax');
   const c = circuit(0.5);
   const s = solve(c);
-  approx(s.edgeI.get(c[2].id), 3 / (50 + 0.1 + 6e-3), 1e-9, '3V/50Ω');
+  approx(s.edgeI.get(c[2].id), 3 / 50.1, 1e-9, '3V/50Ω');
   const sShort = solve(circuit(0));
   assert(sShort.status === 'short', 'wiper=0 (R≈0) 应判短路');
 });
 
 /* ---------- 9. 电源短路幅值 ---------- */
-test('电源短路: I = V/Σr ≈ 250A, 数值有限, 状态 short', () => {
+test('电源短路(理想导线): I = V/r内 = 15A, 端电压 0, 状态 short', () => {
   const edges = [
     E(T.BATTERY, 0, 0, 1, 0, { V: 1.5 }),
     E(T.WIRE, 1, 0, 2, 0), E(T.WIRE, 2, 0, 2, 1),
     E(T.WIRE, 2, 1, 1, 1), E(T.WIRE, 1, 1, 0, 1), E(T.WIRE, 0, 1, 0, 0)
   ];
   const s = solve(edges);
-  const expected = 1.5 / (solver.R_BAT + 5 * solver.R_WIRE);
-  approx(s.edgeI.get(edges[0].id), expected, 1e-9, '短路电流精确值');
+  approx(s.edgeI.get(edges[0].id), 1.5 / 0.1, 1e-9, '短路电流 = E/r内(导线理想)');
+  approx(Math.abs(edgeU(edges[0], s)), 0, 1e-9, '端电压 = 0');
+  /* 短路电流经路由流过每段理想导线 */
+  approx(Math.abs(s.edgeI.get(edges[1].id)), 1.5 / 0.1, 1e-9, '电流走导线(路由)');
   assert(s.status === 'short', '状态 short');
 });
 
@@ -225,9 +227,8 @@ test('反串电池: 净电动势 1V, I≈0.1A, 被充电池电流为负', () => 
     E(T.RESISTOR, 2, 0, 3, 0, { R: 10 }),
     E(T.BATTERY, 4, 0, 3, 0, { V: 2 })      /* 反向: 抬升方向与回路绕向相反 */
   ].concat(W(4, 0, 4, 1), W(4, 1, 0, 1), W(0, 1, 0, 0));
-  const nWires = wires + 1 + 4 + 1;                   /* 1+4+1 = 6, 共 7 条 */
   const s = solve(edges);
-  const expected = 1 / (10 + 2 * solver.R_BAT + nWires * solver.R_WIRE);
+  const expected = 1 / (10 + 2 * solver.R_BAT);   /* 导线理想 */
   const I1 = s.edgeI.get(edges[0].id), I2 = s.edgeI.get(edges[3].id);
   approx(I1, expected, 1e-6, '净电流');
   approx(I2, -expected, 1e-6, '被充电电池');
@@ -263,7 +264,7 @@ test('理想电流表串联: 读数 = 电路电流, 引入误差 < 1e-3', () => 
   ].concat(W(4, 0, 4, 1), W(4, 1, 0, 1), W(0, 1, 0, 0));
   const s = solve(edges);
   const Iam = s.edgeI.get(edges[2].id), Ib = s.edgeI.get(edges[0].id);
-  approx(Iam, 1.5 / (15 + 0.1 + 7e-3 + 1e-4), 1e-9, '≈ V/R(含内阻+表内阻)');
+  approx(Iam, 1.5 / (15 + 0.1 + 1e-4), 1e-9, '≈ V/R(含内阻+表内阻)');
   approx(Iam, Ib, 1e-9, '串联电流处处相等');
 });
 
@@ -342,15 +343,14 @@ test('短路: 端电压塌陷, 导线几乎等势, 电动势降在电源内阻�
   ].concat(W(1, 0, 6, 0), W(6, 0, 6, 4), W(6, 4, 0, 4), W(0, 4, 0, 0)); /* 22 格导线环 */
   const s = solve(edges);
   const I = s.edgeI.get(edges[0].id);
-  approx(I, 3 / (0.1 + 19e-3), 1e-9, '短路电流 I = E/(r+Σr线)');
+  approx(I, 3 / 0.1, 1e-9, '短路电流 I = E/r内(导线理想)');
   assert(s.status === 'short', '状态 short(端电压塌陷判据)');
   const U = edgeU(edges[0], s);
-  assert(U < 0.3 * 3, '端电压塌到 0.3E 以下, 实际 ' + U);
-  /* 导线上任意节点电势不得超过端电压:几乎等势 */
-  let wireMax = 0;
-  s.nodePhi.forEach(v => { if (v != null && Math.abs(v) > wireMax) wireMax = Math.abs(v); });
-  assert(wireMax <= U + 1e-9, '导线电势 ≤ 端电压');
-  assert(wireMax < 0.7, '22 格导线的总压降远小于电动势(降在内阻上), 实际 ' + wireMax);
+  approx(Math.abs(U), 0, 1e-9, '端电压 = 0');
+  /* 理想导线:所有节点合并,严格等势(全部为 0) */
+  s.nodePhi.forEach(v => {
+    if (v != null) approx(Math.abs(v), 0, 1e-9, '理想导线节点严格等势');
+  });
 });
 
 /* ---------- 19. 理想导线(r=0):等势合并,零压降 ---------- */
@@ -402,9 +402,21 @@ test('自定义导线电阻 1Ω: 参与分压', () => {
     E(T.RESISTOR, 2, 0, 3, 0, { R: 10 })
   ].concat(W(3, 0, 3, 1), W(3, 1, 0, 1), W(0, 1, 0, 0));
   const s = solve(edges);
-  const expected = 3 / (10 + 0.1 + 1 + 5e-3);
+  const expected = 3 / (10 + 0.1 + 1);   /* 仅这根导线有 1Ω,其余理想 */
   approx(s.edgeI.get(edges[2].id), expected, 1e-9, 'I = V/(R + r内 + r线)');
   approx(Math.abs(edgeU(edges[1], s)), expected * 1, 1e-6, '导线压降 = I×1Ω');
+});
+
+/* ---------- 22. 默认导线即理想 ---------- */
+test('默认导线 = 理想: rOf 无 props 返回 0, 节点严格等势', () => {
+  approx(solver.rOf(E(T.WIRE, 0, 0, 1, 0, {})), 0, 1e-12, 'rOf(无 props) = 0');
+  const edges = [
+    E(T.BATTERY, 0, 0, 1, 0, { V: 3 }), E(T.WIRE, 1, 0, 2, 0),
+    E(T.RESISTOR, 2, 0, 3, 0, { R: 10 })
+  ].concat(W(3, 0, 3, 1), W(3, 1, 0, 1), W(0, 1, 0, 0));
+  const s = solve(edges);
+  approx(s.edgeI.get(edges[2].id), 3 / 10.1, 1e-9, 'I = E/(R+r内)');
+  assert(s.nodePhi.get('1,0') === s.nodePhi.get('2,0'), '默认导线两端严格等势');
 });
 
 console.log(`\n${passed} 通过, ${failed} 失败`);
