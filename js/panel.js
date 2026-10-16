@@ -34,8 +34,8 @@ DEFS[T.SWITCH] = '闭合 = 电阻 0(通路);断开 = 电阻 ∞(断路,该支路
 function labelEdges(model) {
   var counters = {}, labels = new Map();
   model.list().sort(function (a, b) { return a.id - b.id; }).forEach(function (e) {
-    var base = { battery: 'E', resistor: 'R', lamp: 'L', rheostat: 'R′', switch: 'S', ammeter: 'A', voltmeter: 'V' }[e.type];
-    if (!base) { labels.set(e.id, '导线'); return; }
+    var base = { battery: 'E', resistor: 'R', lamp: 'L', rheostat: 'R′', switch: 'S', ammeter: 'A', voltmeter: 'V', wire: '导线' }[e.type];
+    if (!base) return;
     counters[e.type] = (counters[e.type] || 0) + 1;
     labels.set(e.id, base + sub(counters[e.type]));
   });
@@ -140,7 +140,9 @@ function renderInspector(model, sol, labels) {
 
   var name = document.createElement('div');
   name.className = 'insp-name';
-  name.textContent = FF.TYPE_NAME[e.type] + (labels.get(e.id) && e.type !== T.WIRE ? ' ' + labels.get(e.id) : '');
+  name.textContent = FF.TYPE_NAME[e.type] +
+    (e.type === T.WIRE ? ' (' + e.a[0] + ',' + e.a[1] + ')–(' + e.b[0] + ',' + e.b[1] + ')'
+     : (labels.get(e.id) ? ' ' + labels.get(e.id) : ''));
   box.appendChild(name);
 
   var def = document.createElement('div');
@@ -267,8 +269,12 @@ function renderInspector(model, sol, labels) {
 
 function renderTable(model, sol, labels) {
   var box = $('element-table');
-  var comps = model.list().filter(function (e) { return e.type !== T.WIRE; })
-    .sort(function (a, b) { return a.id - b.id; });
+  var comps = model.list()
+    .sort(function (a, b) {
+      /* 元件在前,导线按 id 跟在后面 */
+      var wa = a.type === T.WIRE ? 1 : 0, wb = b.type === T.WIRE ? 1 : 0;
+      return wa - wb || a.id - b.id;
+    });
   if (!comps.length) { box.innerHTML = '<div class="panel-empty">无元件</div>'; return; }
   var selKey = FF.render.selectedKey();
   var html = '<table class="el-table"><thead><tr>' +
@@ -276,9 +282,11 @@ function renderTable(model, sol, labels) {
   comps.forEach(function (e) {
     var I = sol.edgeI.get(e.id);
     var U = FF.solver.edgeU(e, sol);
-    var R = (e.type === T.RESISTOR || e.type === T.LAMP || e.type === T.RHEOSTAT) ? FF.fmt(FF.solver.rOf(e), '') : '—';
+    var R = (e.type === T.RESISTOR || e.type === T.LAMP || e.type === T.RHEOSTAT || e.type === T.WIRE)
+      ? (FF.solver.rOf(e) === 0 ? '理想' : FF.fmt(FF.solver.rOf(e), '')) : '—';
     var P = (I == null || U == null) ? '—' : FF.fmt(Math.abs(U * I), '');
-    html += '<tr class="cur' + (e.key === selKey ? ' sel' : '') + '" data-key="' + e.key + '">' +
+    var tip = e.type === T.WIRE ? ' title="(' + e.a + ')–(' + e.b + ')"' : '';
+    html += '<tr class="cur' + (e.key === selKey ? ' sel' : '') + '" data-key="' + e.key + '"' + tip + '>' +
       '<td>' + FF.TYPE_NAME[e.type] + ' ' + (labels.get(e.id) || '') + '</td>' +
       '<td>' + (U == null ? '—' : FF.fmt(U, '')) + '</td>' +
       '<td>' + (I == null ? '—' : FF.fmt(I, '')) + '</td>' +

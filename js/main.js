@@ -92,6 +92,58 @@ function wireToggles() {
   });
 }
 
+/* ---------- 移动端底部抽屉:拖把手自由调整露出多少 ---------- */
+
+var sheet = { shift: null, drag: null };
+
+function sheetMaxShift() {
+  var panel = $('panel');
+  return Math.max(0, panel.offsetHeight - 44);   /* 44 = 把手高度(露出的部分) */
+}
+
+function sheetSet(shift, animate) {
+  var panel = $('panel');
+  panel.classList.toggle('no-anim', !animate);
+  panel.style.transform = 'translateY(' + Math.round(shift) + 'px)';
+  sheet.shift = shift;
+  document.body.classList.toggle('panel-open', shift < sheetMaxShift() / 2);
+}
+
+function sheetToggle() {
+  var max = sheetMaxShift();
+  sheetSet((sheet.shift != null ? sheet.shift : max) > 30 ? 0 : max, true);
+}
+
+function setupSheet() {
+  var panel = $('panel');
+  var handle = $('panel-handle');
+  handle.addEventListener('pointerdown', function (ev) {
+    handle.setPointerCapture(ev.pointerId);
+    var base = (sheet.shift != null) ? sheet.shift : (document.body.classList.contains('panel-open') ? 0 : sheetMaxShift());
+    sheet.drag = { y0: ev.clientY, base: base, moved: false };
+    panel.classList.add('no-anim');
+  });
+  handle.addEventListener('pointermove', function (ev) {
+    if (!sheet.drag) return;
+    var dy = ev.clientY - sheet.drag.y0;
+    if (Math.abs(dy) > 6) sheet.drag.moved = true;
+    sheetSet(FF.clamp(sheet.drag.base + dy, 0, sheetMaxShift()), false);
+  });
+  function end(ev) {
+    if (!sheet.drag) return;
+    var d = sheet.drag;
+    sheet.drag = null;
+    if (!d.moved) { sheetToggle(); return; }   /* 原地点击 = 开/收 */
+    var max = sheetMaxShift();
+    var cur = sheet.shift || 0;
+    if (cur < max * 0.25) sheetSet(0, true);            /* 拉得够高 → 全开 */
+    else if (cur > max * 0.8) sheetSet(max, true);      /* 推得够低 → 收起只露把手 */
+    /* 中间位置:保持现状,露出多少随手指 */
+  }
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}
+
 /* ---------- 顶栏动作 ---------- */
 
 function wireActions() {
@@ -114,9 +166,7 @@ function wireActions() {
 
   $('btn-undo').addEventListener('click', function () { model.undo(); });
   $('btn-redo').addEventListener('click', function () { model.redo(); });
-  $('btn-panel').addEventListener('click', function () {
-    document.body.classList.toggle('panel-open');
-  });
+  $('btn-panel').addEventListener('click', sheetToggle);
 
   $('btn-clear').addEventListener('click', function () {
     model.clear();
@@ -138,6 +188,7 @@ document.addEventListener('DOMContentLoaded', function () {
   buildPalette();
   wireToggles();
   wireActions();
+  setupSheet();
 
   /* 恢复上次电路,否则载入串联预置 */
   var restored = false;
