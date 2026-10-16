@@ -71,23 +71,39 @@ function buildPalette() {
 
 /* ---------- 可视化开关 ---------- */
 
+/* 电流/电子流向互斥:同一流动层的两种方向模式,亮灯也互斥 */
+function syncToggleUI() {
+  document.querySelectorAll('#overlay-toggles .toggle').forEach(function (b) {
+    var o = FF.render.opts();
+    var on = b.dataset.layer === 'particles' ? (o.particles && !o.electrons)
+      : b.dataset.layer === 'electrons' ? !!o.electrons
+      : !!o[b.dataset.layer];
+    b.classList.toggle('on', on);
+  });
+}
+
 function wireToggles() {
   document.querySelectorAll('#overlay-toggles .toggle').forEach(function (btn) {
     var layer = btn.dataset.layer;
-    var sync = function () {
-      btn.classList.toggle('on', !!FF.render.opts()[layer]);
-    };
-    sync();
+    syncToggleUI();
     btn.addEventListener('click', function () {
-      var opts = {};
-      opts[layer] = !FF.render.opts()[layer];
-      /* 开"电子流向"时自动开粒子层,否则看不到效果 */
-      if (layer === 'electrons' && opts[layer]) opts.particles = true;
+      var cur = FF.render.opts();
+      var opts;
+      if (layer === 'particles') {
+        /* 电流 = 正电荷方向;电子模式下点它 = 切回正电荷方向;再点 = 关闭流动 */
+        opts = cur.electrons ? { particles: true, electrons: false }
+                             : { particles: !cur.particles, electrons: false };
+      } else if (layer === 'electrons') {
+        /* 电子流向 = 反向模式;再点 = 关闭流动 */
+        opts = cur.electrons ? { particles: false, electrons: false }
+                             : { particles: true, electrons: true };
+      } else {
+        opts = {};
+        opts[layer] = !cur[layer];
+      }
       FF.render.setOpts(opts);
       FF.panel.update();
-      document.querySelectorAll('#overlay-toggles .toggle').forEach(function (b) {
-        b.classList.toggle('on', !!FF.render.opts()[b.dataset.layer]);
-      });
+      syncToggleUI();
     });
   });
 }
