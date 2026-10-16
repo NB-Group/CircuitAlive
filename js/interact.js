@@ -142,6 +142,11 @@ function clearPreview() {
 }
 
 function cancelDrag() {
+  /* 有未提交修改的手势(拖画/拖擦/滑片)直接回滚到按下前,不留残迹 */
+  if (I.drag && I.drag.snap) {
+    model.restore(JSON.parse(I.drag.snap));
+    FF.bus.emit('changed');
+  }
   I.drag = null;
   clearPreview();
 }
@@ -165,6 +170,23 @@ function wiperGrab(e, world) {
 
 /* ---- 指针 ---- */
 
+/* 在光标下的网格边放置当前武装的元件 */
+function placeAtEdge(world) {
+  var gkey = FF.render.gridEdgeAt(world);
+  if (!gkey) return;
+  var occ = model.edges.get(gkey);
+  if (occ && occ.type !== T.WIRE) {
+    hint('该边已有元件 — 先删除,或换个位置');
+    return;
+  }
+  var ends = FF.render.keyEnds(gkey);
+  var res = model.place(I.tool, ends[0], ends[1], I.armed ? I.armed.props : {});
+  if (res) {
+    FF.render.select(gkey);
+    FF.bus.emit('selected', gkey);
+  }
+}
+
 function onDown(ev) {
   I.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
 
@@ -182,6 +204,9 @@ function onDown(ev) {
   }
   if (ev.button !== 0) return;
   var world = FF.render.screenToWorld(ev.clientX, ev.clientY);
+  /* 触摸设备:点击类动作延迟到抬手执行(期间来第二根手指 = 捏合,整体取消),
+     鼠标:按下即执行,手感直接 */
+  var touch = ev.pointerType === 'touch' || ev.pointerType === 'pen';
 
   /* 点开关符号中部 = 开合,与当前工具无关(橡皮除外,它负责删除) */
   var hitKey = FF.render.hitEdge(world);
@@ -189,6 +214,10 @@ function onDown(ev) {
   if (hit && hit.type === T.SWITCH && I.tool !== 'eraser') {
     var smx = (hit.a[0] + hit.b[0]) / 2 * G, smy = (hit.a[1] + hit.b[1]) / 2 * G;
     if (Math.hypot(world.x - smx, world.y - smy) < 16) {
+      if (touch) {
+        I.drag = { mode: 'tap-switch', key: hitKey, x0: ev.clientX, y0: ev.clientY };
+        return;
+      }
       FF.render.select(hitKey);
       FF.bus.emit('selected', hitKey);
       model.toggleSwitch(hitKey);
@@ -197,7 +226,7 @@ function onDown(ev) {
     }
   }
 
-  /* 抓滑变滑轨 = 直接拖拽调阻值(任何工具下) */
+  /* 抓滑变滑轨 = 直接拖拽调阻值(拖拽类,捏合会被 cancelDrag 回滚) */
   if (hit && hit.type === T.RHEOSTAT && wiperGrab(hit, world)) {
     FF.render.select(hitKey);
     FF.bus.emit('selected', hitKey);
@@ -228,28 +257,16 @@ function onDown(ev) {
 
     case 'eraser': {
       var ekey = FF.render.hitEdge(world);
-      if (ekey) {
-        I.drag = { mode: 'erase', snap: model.serializeStr() };
-        model.rawRemove(ekey);
-        FF.bus.emit('changed');
-      }
+      if (ekey) I.drag = { mode: 'erase', firstKey: ekey, snap: model.serializeStr(), changed: false, moved: false, x0: ev.clientX, y0: ev.clientY };
       break;
     }
 
     default: {   /* 元件放置:空边直接放,导线边替换,元件边拒绝 */
-      var gkey = FF.render.gridEdgeAt(world);
-      if (!gkey) break;
-      var occ = model.edges.get(gkey);
-      if (occ && occ.type !== T.WIRE) {
-        hint('该边已有元件 — 先删除,或换个位置');
+      if (touch) {
+        I.drag = { mode: 'tap-place', world0: world, x0: ev.clientX, y0: ev.clientY };
         break;
       }
-      var ends = FF.render.keyEnds(gkey);
-      var res = model.place(I.tool, ends[0], ends[1], I.armed ? I.armed.props : {});
-      if (res) {
-        FF.render.select(gkey);
-        FF.bus.emit('selected', gkey);
-      }
+      placeAtEdge(world);
     }
   }
   if (I.drag) {
@@ -302,6 +319,19 @@ function onMove(ev) {
     return;
   }
 
+  /* 点击类手势:手指挪动超阈值 → 取消(那是滑动,不是点击) */
+  if (I.drag && (I.drag.mode === 'tap-place' || I.drag.mode === 'tap-switch')) {
+    if (Math.hypot(ev.clientX - I.drag.x0, ev.clientY - I.drag.y0) > 12) I.drag = null;
+    return;
+  }
+
+  /* 拖擦:确认移动后再开始(避免点击抖动误删) */
+  if (I.drag && I.drag.mode === 'erase' && !I.drag.moved) {
+    if (Math.hypot(ev.clientX - (I.drag.x0 || ev.clientX), ev.clientY - (I.drag.y0 || ev.clientY)) > 8) {
+      I.drag.moved = true;
+    } else return;
+  }
+
   /* 滑变滑片拖拽:投影到 [0,1] */
   if (I.drag && I.drag.mode === 'wiper') {
     var we = I.drag.edge;
@@ -352,6 +382,22 @@ function onUp(ev) {
 
   if (d.mode === 'pan') return;
 
+  if (d.mode === 'tap-place') {
+    placeAtEdge(d.world0);
+    return;
+  }
+
+  if (d.mode === 'tap-switch') {
+    var sw = model.edges.get(d.key);
+    if (sw && sw.type === T.SWITCH) {
+      FF.render.select(d.key);
+      FF.bus.emit('selected', d.key);
+      model.toggleSwitch(d.key);
+      hint(sw.props.closed ? '开关闭合 — 电路接通' : '开关断开 — 电路断开');
+    }
+    return;
+  }
+
   if (d.mode === 'wiper') {
     model.commit(d.snap);   /* 整个拖拽 = 一次 undo */
     hint('滑片位置: ' + FF.fmt(FF.solver.rOf(d.edge), 'Ω'));
@@ -369,7 +415,11 @@ function onUp(ev) {
     return;
   }
 
-  if (d.mode === 'erase') model.commit(d.snap);
+  if (d.mode === 'erase') {
+    /* 原地单击 = 删按下的那根;拖过 = 删扫到的 */
+    if (!d.changed && !d.moved && model.rawRemove(d.firstKey)) d.changed = true;
+    if (d.changed) model.commit(d.snap);
+  }
 }
 
 /* ---- 双击:导线→截面探针 · 节点→电势零点 ---- */

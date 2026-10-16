@@ -61,6 +61,12 @@ document.addEventListener('DOMContentLoaded', function () {
         clientX: x, clientY: y, isPrimary: true
       }));
     }
+    function fireT(target, type, x, y, id) {   /* 触摸指针 */
+      target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, cancelable: true, pointerId: id, button: 0, buttons: 1,
+        clientX: x, clientY: y, pointerType: 'touch', isPrimary: true
+      }));
+    }
 
     /* ---- 用例 1:L 形拖画:从电池正极 (2,1) 拖到 (5,3) ---- */
     FF.interact.setTool('wire');
@@ -145,6 +151,23 @@ document.addEventListener('DOMContentLoaded', function () {
     model.edges.forEach(function (e2) { if (e2.type === 'rheostat') rheo = e2; });
     var wAfter = rheo ? rheo.props.wiper : '无';
     log('case8 滑片拖拽: wiper=' + (typeof wAfter === 'number' ? wAfter.toFixed(2) : wAfter) + ' (期望≈0) R=' + (rheo ? FF.solver.rOf(rheo).toFixed(1) : '?') + 'Ω');
+
+    /* ---- 用例 9:触摸 — 点击放置延迟到抬手;捏合不放置 ---- */
+    FF.interact.setTool('lamp', { R: 10 });
+    var b9 = model.edges.size;
+    fireT(svg, 'pointerdown', 9 * 40, 5 * 40, 21);
+    fireT(window, 'pointermove', 9 * 40, 5 * 40, 21);
+    fireT(window, 'pointerup', 9 * 40, 5 * 40, 21);
+    var tapPlaced = model.edges.size > b9;
+
+    var b9b = model.edges.size;
+    fireT(svg, 'pointerdown', 10 * 40, 5 * 40, 22);       /* 第一指按下(不抬) */
+    fireT(svg, 'pointerdown', 12 * 40, 6 * 40, 23);       /* 第二指到 → 捏合,tap 取消 */
+    fireT(window, 'pointerup', 10 * 40, 5 * 40, 22);
+    fireT(window, 'pointerup', 12 * 40, 6 * 40, 23);
+    var pinchClean = model.edges.size === b9b;
+
+    log('case9 触摸放置: 单指点击放置=' + tapPlaced + ' 捏合后无残留元件=' + pinchClean);
   } catch (err) {
     log('EXCEPTION: ' + (err && err.stack || err));
   }
