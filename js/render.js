@@ -105,11 +105,17 @@ function buildDefs() {
   FF.svgEl('path', { d: d, stroke: '#dfe7ec', 'stroke-width': 1, fill: 'none' }, pat);
   FF.svgEl('path', { d: 'M0 0V' + (G * 5) + 'M0 0H' + (G * 5), stroke: '#cdd9e3', 'stroke-width': 1.2, fill: 'none' }, pat);
 
-  /* 灯泡光晕 */
+  /* 灯泡光晕(外晕 + 泛光模糊 + 白热核,伪 HDR 三层) */
   var grad = FF.svgEl('radialGradient', { id: 'lamp-glow' }, defs);
   FF.svgEl('stop', { offset: '0%', 'stop-color': '#ffdf9e', 'stop-opacity': 0.95 }, grad);
   FF.svgEl('stop', { offset: '45%', 'stop-color': '#ffc95e', 'stop-opacity': 0.5 }, grad);
   FF.svgEl('stop', { offset: '100%', 'stop-color': '#ffb347', 'stop-opacity': 0 }, grad);
+  var core = FF.svgEl('radialGradient', { id: 'lamp-core' }, defs);
+  FF.svgEl('stop', { offset: '0%', 'stop-color': '#fffdf2', 'stop-opacity': 1 }, core);
+  FF.svgEl('stop', { offset: '55%', 'stop-color': '#ffe6a1', 'stop-opacity': 0.95 }, core);
+  FF.svgEl('stop', { offset: '100%', 'stop-color': '#ffb347', 'stop-opacity': 0 }, core);
+  var bloom = FF.svgEl('filter', { id: 'lamp-bloom', x: '-120%', y: '-120%', width: '340%', height: '340%' }, defs);
+  FF.svgEl('feGaussianBlur', { stdDeviation: 2.8 }, bloom);
 
   R.gradGroup = FF.svgEl('g', { id: 'potential-grads' }, defs);
 }
@@ -198,6 +204,15 @@ function syncSolution() {
   R.layers.readings.innerHTML = '';
   R.gradGroup.innerHTML = '';
 
+  /* 电场自适应参考:本电路无源元件的最大压降 */
+  var efieldURef = 0.01;
+  m.edges.forEach(function (e) {
+    if (e.type === T.RESISTOR || e.type === T.LAMP || e.type === T.RHEOSTAT || e.type === T.SWITCH) {
+      var Ux = FF.solver.edgeU(e, sol);
+      if (Ux != null && Math.abs(Ux) > efieldURef) efieldURef = Math.abs(Ux);
+    }
+  });
+
   /* 灯泡亮度按绝对功率:P_ref = 3V 额定(9/R)。短路时唯一的灯也必须暗下去 */
   var lampP = new Map();
   m.edges.forEach(function (e) {
@@ -217,7 +232,7 @@ function syncSolution() {
 
     /* 动态部件 */
     if (e.type === T.SWITCH) FF.symbols.setLever(rec.hooks.lever, !!e.props.closed);
-    if (e.type === T.RHEOSTAT) FF.symbols.setWiper(rec.hooks.wiper, e.props.wiper);
+    if (e.type === T.RHEOSTAT) FF.symbols.setWiper(rec.hooks, e.props.wiper);
     if (e.type === T.LAMP) FF.symbols.setGlow(rec.hooks.glow, lampP.get(e.id) || 0);
 
     /* 仪表读数(符号下方/右侧,恒正立;画布上显示偏转幅值,带符号值见右侧面板) */
@@ -250,7 +265,7 @@ function syncSolution() {
     /* 电场箭头(只画无源元件;电池内的静电场方向与电流相反,不画) */
     if (R.opts.efield && (e.type === T.RESISTOR || e.type === T.LAMP || e.type === T.RHEOSTAT || e.type === T.SWITCH)) {
       var Ue = FF.solver.edgeU(e, sol);
-      if (Ue != null && Math.abs(Ue) >= 0.01) drawEField(e, Ue);
+      if (Ue != null && Math.abs(Ue) >= 0.01) drawEField(e, Ue, efieldURef);
     }
   });
 
@@ -283,22 +298,21 @@ function syncSolution() {
   applySelection();
 }
 
-/* 电场箭头:方向 高电势 → 低电势,长度 ∝ |U| */
-var UMAX_REF = 12;   /* 参考电压:12V 拉满长度 */
-
-function drawEField(e, U) {
+/* 电场箭头:方向 高电势 → 低电势。长度按本电路最大压降自适应,
+   保证任何电路里箭头都明显可见 */
+function drawEField(e, U, uRef) {
   var angle = FF.symbols.angleOf(e.a, e.b);
-  var len = FF.clamp(4 + 22 * Math.abs(U) / UMAX_REF, 5, 26);
-  /* E 从高电势指向低电势;局部 +x = a→b */
+  var frac = FF.clamp(Math.abs(U) / uRef, 0.15, 1);
+  var len = 8 + 18 * frac;
   var dir = (U > 0) ? 1 : -1;    /* U=φa−φb>0 ⇒ a 端高 ⇒ E 沿 a→b */
   var x0 = -len / 2 * dir, x1 = len / 2 * dir;
   var g = FF.svgEl('g', {
     'class': 'efield-arrow',
     transform: 'translate(' + w2((e.a[0] + e.b[0]) / 2) + ',' + w2((e.a[1] + e.b[1]) / 2) + ') rotate(' + angle + ')'
   }, R.layers.efield);
-  FF.svgEl('line', { x1: x0, y1: 0, x2: x1 - 5 * dir, y2: 0 }, g);
+  FF.svgEl('line', { x1: x0, y1: 0, x2: x1 - 6 * dir, y2: 0, 'stroke-width': 1.5 }, g);
   FF.svgEl('polygon', {
-    points: x1 + ',' + (-3.2 * Math.min(1, len / 18)) + ' ' + x1 + ',' + (3.2 * Math.min(1, len / 18)) + ' ' + (x1 - 6 * dir) + ',0'
+    points: x1 + ',' + (-4) + ' ' + x1 + ',' + 4 + ' ' + (x1 - 7.5 * dir) + ',0'
   }, g);
 }
 
@@ -324,24 +338,24 @@ function syncParticles() {
     if (!R.opts.particles || I == null || I === 0) return;
     seen.add(e.id);
     var ratio = Math.abs(I) / Imax;
-    var count = Math.min(4, 1 + Math.floor(3 * ratio));
-    var speed = FF.clamp(26 + 130 * Math.sqrt(ratio), 26, 240);   /* 世界单位/秒 */
+    /* 匀速漂移(漂移速度不随电流剧变);电流强弱由粒子粗细表达 */
+    var speed = 58;
     var dir = (I > 0 ? 1 : -1) * (R.opts.electrons ? -1 : 1);
+    var radius = 1.9 + 1.9 * ratio;
 
     var p = pools.get(e.id);
-    if (!p || p.count !== count) {
-      if (p) p.els.forEach(function (c) { c.remove(); });
-      p = { els: [], phase: [], count: count };
-      for (var i = 0; i < count; i++) {
-        var c = FF.svgEl('circle', { r: 2.3, 'class': 'particle' + (R.opts.electrons ? ' electron' : '') }, layer);
+    if (!p) {
+      p = { els: [], phase: [], count: 2 };
+      for (var i = 0; i < 2; i++) {
+        var c = FF.svgEl('circle', { r: radius, 'class': 'particle' + (R.opts.electrons ? ' electron' : '') }, layer);
         p.els.push(c);
-        p.phase.push(i / count);
+        p.phase.push(i / 2);
       }
       pools.set(e.id, p);
     }
-    /* 电子模式切换时更新颜色 */
     p.els.forEach(function (c) {
       c.setAttribute('class', 'particle' + (R.opts.electrons ? ' electron' : ''));
+      c.setAttribute('r', radius.toFixed(2));
     });
     p.speed = speed;
     p.dir = dir;
@@ -569,6 +583,11 @@ FF.render = {
   overlay: function () { return R.layers.overlay; },
   view: function () { return R.view; },
   screenToWorld: screenToWorld,
+  setView: function (x, y, w) {
+    R.view.x = x; R.view.y = y;
+    R.view.w = FF.clamp(w, 200, 4000);
+    applyView();
+  },
   zoomAt: zoomAt,
   panBy: panBy,
   fitView: fitView,

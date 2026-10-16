@@ -22,7 +22,7 @@ function $(id) { return document.getElementById(id); }
 /* 严格定义式(工具的灵魂:用高中的可定义概念讲初中的元件) */
 var DEFS = {};
 DEFS[T.BATTERY] = '<b>电动势 E</b>:电源内非静电力把单位正电荷从负极移到正极所做的功(单位 V)。闭合电路欧姆定律 <b>U = E − I·r</b>:内阻 r 默认 0.1 Ω(真实干电池量级,可在下方修改)。短路时电流只受 r 限制,电动势几乎全降在电源内部,端电压≈0、导线几乎等势。';
-DEFS[T.WIRE] = '理想导线的严格含义是<b>等势体</b>:两端 U = 0,内部 E = 0。本模型给每格导线 1 mΩ(否则电池被 0Ω 短接时方程无解);0.3 A 时每格压降仅 0.3 mV,比真实铜导线还小 —— 显示精度内处处等势。';
+DEFS[T.WIRE] = '理想导线的严格含义是<b>等势体</b>:两端 U = 0,内部 E = 0。默认每格 1 mΩ(真实铜线量级);把电阻设为 <b>0</b> 即理想导线,求解时两端点合并为同一节点,严格等势。';
 DEFS[T.RESISTOR] = '电阻定义式 <b>R = U/I</b>:这个比值由导体本身(材料、长度、横截面积)决定 —— U/I 只是<b>量度</b>它,不是电压"产生"了电阻。';
 DEFS[T.LAMP] = '灯泡亮度由<b>实际功率 P = U·I</b> 决定,不是由电流或电压单独决定。';
 DEFS[T.RHEOSTAT] = '靠改变接入电路的电阻丝<b>长度</b>来改变电阻:接入越长,R 越大(与横截面积、材料共同决定 R)。';
@@ -152,6 +152,12 @@ function renderInspector(model, sol, labels) {
   var P = e.props;
   function setProp(patch) { model.setProps(key, patch); }
 
+  if (e.type === T.WIRE) {
+    box.appendChild(numRow('电阻 r', 'Ω', P.r == null ? 0.001 : P.r, 0, 50, 0.001, function (v) {
+      setProp({ r: v === 0 ? 0 : FF.clamp(v, 0.001, 50) });
+    }));
+  }
+
   if (e.type === T.BATTERY) {
     box.appendChild(numRow('电动势 E', 'V', P.V || 3, 0.1, 24, 0.1, function (v) {
       setProp({ V: FF.clamp(v || 1.5, FF.LIMITS.V[0], FF.LIMITS.V[1]) });
@@ -236,6 +242,7 @@ function renderInspector(model, sol, labels) {
   } else if (e.type === T.WIRE) {
     html += kv('电流 I', I == null ? '—' : FF.fmt(I, 'A'));
     html += kv('两端 U', U == null ? '—' : FF.fmt(U, 'V'));
+    html += kv('电阻 r', FF.solver.rOf(e) === 0 ? '理想' : FF.fmt(FF.solver.rOf(e), 'Ω'));
   } else if (e.type === T.SWITCH) {
     html += kv('电流 I', I == null ? '—' : FF.fmt(I || 0, 'A'));
     html += kv('两端 U', U == null ? '—' : FF.fmt(U, 'V'));

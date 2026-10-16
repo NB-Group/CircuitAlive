@@ -65,10 +65,13 @@ BUILDERS[T.RESISTOR] = function (g, angle, props) {
   el('rect', { x: -11, y: -6.5, width: 22, height: 13, 'class': 'fill-paper' }, g);
 };
 
-/* 小灯泡:圆圈内打叉;glow 光晕在符号底下,由 render 控制透明度 */
+/* 小灯泡:圆圈内打叉 + 三层伪 HDR 光晕(外晕/泛光/白热核),亮度连续受控 */
 BUILDERS[T.LAMP] = function (g, angle, props) {
-  var glow = el('circle', { cx: 0, cy: 0, r: 16, fill: 'url(#lamp-glow)', opacity: 0 }, g);
+  var glow = el('g', { opacity: 0 }, g);
   glow.setAttribute('data-hook', 'glow');
+  el('circle', { cx: 0, cy: 0, r: 19, fill: 'url(#lamp-glow)', 'data-part': 'halo' }, glow);
+  el('circle', { cx: 0, cy: 0, r: 9.5, fill: '#ffca66', filter: 'url(#lamp-bloom)', 'data-part': 'bloom' }, glow);
+  el('circle', { cx: 0, cy: 0, r: 4, fill: 'url(#lamp-core)', 'data-part': 'core' }, glow);
   line(g, -HALF, 0, -8.5, 0);
   line(g, 8.5, 0, HALF, 0);
   el('circle', { cx: 0, cy: 0, r: 8.5, 'class': 'fill-paper' }, g);
@@ -83,9 +86,11 @@ BUILDERS[T.RHEOSTAT] = function (g, angle, props) {
   el('rect', { x: -13, y: -5.5, width: 26, height: 11, 'class': 'fill-paper' }, g);
   line(g, -13, -11, 10, -11, 'thin');         /* 箭杆 */
   el('polygon', { points: '10,-13.5 15,-11 10,-8.5', 'class': '' }, g); /* 箭头 */
-  var wiper = line(g, 0, -11, 0, -5.5);
+  var wiper = line(g, 0, -11.5, 0, -5.5);
   wiper.setAttribute('data-hook', 'wiper');
   wiper.setAttribute('stroke-width', '2.5');
+  var knob = el('circle', { cx: 0, cy: -11.5, r: 3.2, 'class': 'fill-paper' }, g);
+  knob.setAttribute('data-hook', 'wiper-knob');
 };
 
 /* 电流表 / 电压表:圆圈 + 字母;读数文字由 render 层放到符号下方 */
@@ -120,25 +125,51 @@ FF.symbols = {
 
   /* ---- 动态部件原位更新 ---- */
 
-  /* 开关杠杆 */
+  /* 开关杠杆:130ms 缓动补间 */
   setLever: function (hookEl, closed) {
     if (!hookEl) return;
-    hookEl.setAttribute('x2', closed ? 7 : 5.4);
-    hookEl.setAttribute('y2', closed ? 0 : -8.5);
+    var to = closed ? { x: 7, y: 0 } : { x: 5.4, y: -8.5 };
+    var from = {
+      x: parseFloat(hookEl.getAttribute('x2')),
+      y: parseFloat(hookEl.getAttribute('y2'))
+    };
+    if (!isFinite(from.x)) from = { x: 5.4, y: -8.5 };
+    if (hookEl.__raf) cancelAnimationFrame(hookEl.__raf);
+    var t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
+    function frame(now) {
+      var t = Math.min(1, ((now || t0 + 130) - t0) / 130);
+      var e = 1 - Math.pow(1 - t, 3);
+      hookEl.setAttribute('x2', from.x + (to.x - from.x) * e);
+      hookEl.setAttribute('y2', from.y + (to.y - from.y) * e);
+      if (t < 1) hookEl.__raf = requestAnimationFrame(frame);
+    }
+    hookEl.__raf = requestAnimationFrame(frame);
   },
 
-  /* 滑片位置(0..1) */
-  setWiper: function (hookEl, wiper) {
-    if (!hookEl) return;
+  /* 滑片位置(0..1):滑线与把手同步(hooks 为 {wiper, wiper-knob}) */
+  setWiper: function (hooks, wiper) {
+    var bar = hooks.wiper || hooks;
+    if (!bar) return;
     var x = FF.lerp(-13, 13, FF.clamp(wiper == null ? 1 : wiper, 0, 1));
-    hookEl.setAttribute('x1', x);
-    hookEl.setAttribute('x2', x);
+    bar.setAttribute('x1', x);
+    bar.setAttribute('x2', x);
+    if (hooks['wiper-knob']) hooks['wiper-knob'].setAttribute('cx', x);
   },
 
-  /* 灯泡光晕强度(0..1) */
+  /* 灯泡光晕强度(0..1.2,可过曝):三层联动,亮度连续 */
   setGlow: function (hookEl, k) {
     if (!hookEl) return;
-    hookEl.setAttribute('opacity', (FF.clamp(k, 0, 1) * 0.85).toFixed(3));
+    k = FF.clamp(k, 0, 1.2);
+    hookEl.setAttribute('opacity', Math.min(1, k * 1.05).toFixed(3));
+    var halo = hookEl.querySelector('[data-part="halo"]');
+    var bloom = hookEl.querySelector('[data-part="bloom"]');
+    var core = hookEl.querySelector('[data-part="core"]');
+    if (halo) halo.setAttribute('r', (13 + 7 * k).toFixed(1));
+    if (bloom) bloom.setAttribute('opacity', (k * 0.62).toFixed(3));
+    if (core) {
+      core.setAttribute('r', (3 + 3.4 * k).toFixed(1));
+      core.setAttribute('opacity', Math.min(1, k * 1.35).toFixed(3));
+    }
   },
 
   /* ---- 元件栏图标(56×36,静态示意) ---- */

@@ -353,5 +353,59 @@ test('短路: 端电压塌陷, 导线几乎等势, 电动势降在电源内阻�
   assert(wireMax < 0.7, '22 格导线的总压降远小于电动势(降在内阻上), 实际 ' + wireMax);
 });
 
+/* ---------- 19. 理想导线(r=0):等势合并,零压降 ---------- */
+test('理想导线: 同侧导线电势严格相等, I = E/(R+r内)', () => {
+  const iw = (x1, y1, x2, y2) => E(T.WIRE, x1, y1, x2, y2, { r: 0 });
+  const chain = [];
+  for (let x = 4; x > 0; x--) chain.push(iw(x, 1, x - 1, 1));   /* 底轨逐格理想线 */
+  const edges = [
+    E(T.BATTERY, 0, 0, 1, 0, { V: 3 }),
+    iw(1, 0, 2, 0), E(T.LAMP, 2, 0, 3, 0, { R: 10 }), iw(3, 0, 4, 0),
+    iw(4, 0, 4, 1),
+    ...chain,
+    iw(0, 1, 0, 0)
+  ];
+  const s = solve(edges);
+  const lamp = edges[2];
+  approx(s.edgeI.get(lamp.id), 3 / (10 + 0.1), 1e-9, 'I = E/(R + r内), 导线零贡献');
+  /* 灯泡正侧 (1,0)(2,0) 严格等势;负侧 (3,0)(4,0)(4,1)(0,1)(0,0) 全部合并到地 */
+  assert(s.nodePhi.get('1,0') === s.nodePhi.get('2,0'), '正侧理想导线严格等势');
+  assert(s.nodePhi.get('3,0') === s.nodePhi.get('4,1'), '负侧整条导线合并为同一超节点');
+  assert(s.nodePhi.get('3,0') === 0, '负侧超节点即接地的电池负极');
+  approx(s.nodePhi.get('1,0'), 3 * 10 / 10.1, 1e-9, 'φ(正侧) = 端电压');
+  /* 理想导线电流 = 电池电流(KCL 路由) */
+  const Ibat = s.edgeI.get(edges[0].id);
+  approx(s.edgeI.get(edges[1].id), Ibat, 1e-9, '理想导线承载全部电流');
+  approx(edgeU(edges[1], s), 0, 1e-12, '理想导线 U = 0');
+  assert(s.status === 'normal', '状态 normal');
+});
+
+/* ---------- 20. 理想导线短接电池: I = E/r内, 端电压 0 ---------- */
+test('理想导线短接电池: I = V/r内 = 30A, U = 0, 状态 short', () => {
+  const iw = (x1, y1, x2, y2) => E(T.WIRE, x1, y1, x2, y2, { r: 0 });
+  const edges = [
+    E(T.BATTERY, 0, 0, 1, 0, { V: 3 }),
+    iw(1, 0, 2, 0), iw(2, 0, 2, 1), iw(2, 1, 1, 1), iw(1, 1, 0, 1), iw(0, 1, 0, 0)
+  ];
+  const s = solve(edges);
+  approx(s.edgeI.get(edges[0].id), 30, 1e-6, 'I = E/r内');
+  approx(Math.abs(s.edgeI.get(edges[1].id)), 30, 1e-6, '短路电流全走理想导线(路由)');
+  approx(Math.abs(edgeU(edges[0], s)), 0, 1e-9, '端电压 = 0');
+  assert(s.status === 'short', '状态 short');
+});
+
+/* ---------- 21. 自定义导线电阻 ---------- */
+test('自定义导线电阻 1Ω: 参与分压', () => {
+  const edges = [
+    E(T.BATTERY, 0, 0, 1, 0, { V: 3 }),
+    E(T.WIRE, 1, 0, 2, 0, { r: 1 }),
+    E(T.RESISTOR, 2, 0, 3, 0, { R: 10 })
+  ].concat(W(3, 0, 3, 1), W(3, 1, 0, 1), W(0, 1, 0, 0));
+  const s = solve(edges);
+  const expected = 3 / (10 + 0.1 + 1 + 5e-3);
+  approx(s.edgeI.get(edges[2].id), expected, 1e-9, 'I = V/(R + r内 + r线)');
+  approx(Math.abs(edgeU(edges[1], s)), expected * 1, 1e-6, '导线压降 = I×1Ω');
+});
+
 console.log(`\n${passed} 通过, ${failed} 失败`);
 if (failed) process.exit(1);

@@ -107,7 +107,7 @@ document.addEventListener('DOMContentLoaded', function () {
     fire(svg, 'pointerdown', 8 * 40, 5 * 40);
     fire(window, 'pointermove', 11 * 40, 7 * 40);   /* 直接斜拖 */
     fire(window, 'pointerup', 11 * 40, 7 * 40);
-    var diag = [[8,5,9,5],[9,5,10,5],[10,5,11,5],[11,5,11,6],[11,6,11,7]];
+    var diag = [[8,5,9,5],[9,5,10,5],[10,5,10,6],[10,6,11,6],[11,6,11,7]];  /* 跟随式:主轴优先逐格 */
     var miss5 = diag.filter(function (s) {
       return !model.edges.has(FF.edgeKey([s[0], s[1]], [s[2], s[3]]));
     });
@@ -133,6 +133,18 @@ document.addEventListener('DOMContentLoaded', function () {
       if (tr.indexOf('translate(200,60)') >= 0) foundMid = true;  /* (5,1)-(5,2) 中点 = (100,60) */
     });
     log('case7 中点渲染: 边(5,1)-(5,2)中心=(200,60) 找到=' + foundMid);
+
+    /* ---- 用例 8:拖滑变滑片(画布直接拖拽) ---- */
+    model.loadPreset(FF.presets[3].tuples);   /* 滑变调光预置 */
+    FF.interact.setTool('select');
+    /* 滑变在 (2,2)-(3,2),滑轨法向 −11:世界坐标 = 中点(100,80) + 法向偏移 */
+    fire(svg, 'pointerdown', 100, 80 - 11);
+    fire(window, 'pointermove', 100 - 20, 80 - 11);   /* 拖到左端 */
+    fire(window, 'pointerup', 100 - 20, 80 - 11);
+    var rheo = null;
+    model.edges.forEach(function (e2) { if (e2.type === 'rheostat') rheo = e2; });
+    var wAfter = rheo ? rheo.props.wiper : '无';
+    log('case8 滑片拖拽: wiper=' + (typeof wAfter === 'number' ? wAfter.toFixed(2) : wAfter) + ' (期望≈0) R=' + (rheo ? FF.solver.rOf(rheo).toFixed(1) : '?') + 'Ω');
   } catch (err) {
     log('EXCEPTION: ' + (err && err.stack || err));
   }

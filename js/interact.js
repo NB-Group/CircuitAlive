@@ -1,12 +1,14 @@
-/* FieldFlow · interact — 工具状态机与指针/键盘交互
+/* FieldFlow · interact — 工具状态机与指针/键盘/触摸交互
  *
  * 工具:select(默认)· wire · eraser · 各元件放置(保持武装便于连放)。
  * 命中一律走几何计算,不依赖 DOM 事件目标:
  *   hitEdge    只找已存在的边(选择/擦除)
- *   gridEdgeAt 找光标下最近的网格边,空边也算(放置/预览的关键)
+ *   gridEdgeAt 找光标下最近的网格边,空边也算(放置/预览)
  *
- * 导线 = L 形布线:按下定起点,拖动实时预览直角路径,松手整条落线(一次 undo);
- * 原地单击 = 只放光标下那一段。 */
+ * 导线 = 跟随式布线:按下定起点(磁吸已有节点),拖动逐格跟随光标铺线,
+ * 松手一次提交(一次 undo);原地单击 = 放光标下那一段。
+ * 开关:任意工具下点符号中部 = 开合。滑变:拖符号上的滑片把手直接调阻值。
+ * 触摸:单指 = 鼠标;双指 = 平移 + 捏合缩放。 */
 (function (global) {
 'use strict';
 
@@ -22,21 +24,23 @@ var I = {
   armed: null,          /* {type, props} 放置武装 */
   hoverKey: null,
   ghost: null,          /* 放置预览 <g> */
-  preview: null,        /* 导线 L 形预览 <g> */
-  drag: null,           /* {mode:'wire'|'erase'|'pan', ...} */
+  drag: null,           /* {mode:'wire'|'erase'|'pan'|'wiper', ...} */
+  pinch: null,          /* 双指手势状态 */
+  pointers: new Map(),  /* 活动指针(触摸多点) */
   spaceDown: false,
-  refNode: null         /* 电势零点(nodeKey|null = 电池负极) */
+  refNode: null,        /* 电势零点(nodeKey|null = 电池负极) */
+  recentPlaces: []
 };
 
 var HINTS = {
-  select: '点击元件选中 · 点开关切换开合 · 双击导线开截面探针 · 双击节点设电势零点',
-  wire: '单击空边放一段 · 按住拖到目标松手,L 形直角布线',
+  select: '点击元件选中 · 点开关中部切换开合 · 拖滑变滑片调阻值 · 双击导线开截面探针',
+  wire: '单击空边放一段 · 按住拖动,导线逐格跟随光标铺过去',
   eraser: '点击或拖过要删除的边',
   battery: '点击网格边放置电池(R 翻转正负极,Esc 结束)',
-  switch: '点击网格边放置开关,再点符号切换开合',
+  switch: '点击网格边放置开关,再点符号中部切换开合',
   resistor: '点击网格边放置定值电阻',
   lamp: '点击网格边放置小灯泡',
-  rheostat: '点击网格边放置滑动变阻器(选中后右侧调滑片)',
+  rheostat: '点击网格边放置滑动变阻器,拖符号上的滑片调阻值',
   ammeter: '点击网格边放置电流表(串联进电路)',
   voltmeter: '点击网格边放置电压表(并联在被测元件两端)'
 };
@@ -92,8 +96,7 @@ function nodeDeg() {
 }
 FF.bus.on('changed', function () { I._degCache = null; });
 
-/* 光标附近有"已有节点"(距 < 0.4 格)就吸过去,否则取最近格点。
- * 这保证在导线附近按下/松手时一定接到它的端点上,而不是隔壁空格点。 */
+/* 光标附近有"已有节点"(距 < 0.4 格)就吸过去,否则取最近格点 */
 function snapPoint(world) {
   var deg = nodeDeg();
   var gx = Math.round(world.x / G), gy = Math.round(world.y / G);
@@ -115,8 +118,7 @@ function distToSeg(pt, a, b) {
   return Math.hypot(pt.x - (ax + vx * t), pt.y - (ay + vy * t));
 }
 
-/* 单击放一段:以磁吸节点为中心,选离光标最近的"空边"——
- * 点在导线端点附近自然延长,点在导线中段附近自然分支(T 结点) */
+/* 单击放一段:以磁吸节点为中心,选离光标最近的"空边" */
 function clickPlaceSegment(world) {
   var N = snapPoint(world);
   var dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -129,56 +131,14 @@ function clickPlaceSegment(world) {
   });
   if (best) {
     model.placeWire(best[0], best[1]);
-    (I.recentPlaces = I.recentPlaces || []).push(performance.now());
+    I.recentPlaces.push(performance.now());
   } else {
     hint('该节点四周都已被占用');
   }
 }
 
-/* ---- L 形布线 ---- */
-
-/* 起点到终点的直角折点序列(横长先横,竖长先竖) */
-function lPath(a, b) {
-  var pts = [a.slice()];
-  if (a[0] !== b[0] && a[1] !== b[1]) {
-    if (Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1])) pts.push([b[0], a[1]]);
-    else pts.push([a[0], b[1]]);
-  }
-  pts.push(b.slice());
-  return pts;
-}
-
-/* 折点序列 → 逐格导线段 */
-function pathSegments(pts) {
-  var segs = [];
-  for (var i = 0; i + 1 < pts.length; i++) {
-    var cur = pts[i].slice();
-    var bx = pts[i + 1][0], by = pts[i + 1][1];
-    while (cur[0] !== bx || cur[1] !== by) {
-      var nxt = cur[0] !== bx
-        ? [cur[0] + Math.sign(bx - cur[0]), cur[1]]
-        : [cur[0], cur[1] + Math.sign(by - cur[1])];
-      segs.push([cur.slice(), nxt]);
-      cur = nxt;
-    }
-  }
-  return segs;
-}
-
 function clearPreview() {
   if (I.preview) { I.preview.remove(); I.preview = null; }
-}
-
-function drawWirePreview(start, end) {
-  clearPreview();
-  if (start[0] === end[0] && start[1] === end[1]) return;
-  var pts = lPath(start, end).map(function (p) { return (p[0] * G) + ',' + (p[1] * G); }).join(' ');
-  I.preview = FF.svgEl('g', {}, FF.render.overlay());
-  FF.svgEl('polyline', {
-    points: pts, fill: 'none', stroke: '#c8451f',
-    'stroke-width': 2.4, 'stroke-linecap': 'round', opacity: 0.55
-  }, I.preview);
-  FF.svgEl('circle', { cx: end[0] * G, cy: end[1] * G, r: 3.4, fill: '#c8451f', opacity: 0.8 }, I.preview);
 }
 
 function cancelDrag() {
@@ -186,9 +146,35 @@ function cancelDrag() {
   clearPreview();
 }
 
+/* ---- 滑变滑片:把世界坐标投到符号局部坐标 ----
+ * lx ∈ [-20,20] 沿边方向(局部 +x);ly 法向 */
+function rheostatLocal(e, world) {
+  var ax = e.a[0] * G, ay = e.a[1] * G, bx = e.b[0] * G, by = e.b[1] * G;
+  var len = Math.hypot(bx - ax, by - ay);
+  var ux = (bx - ax) / len, uy = (by - ay) / len;
+  var mx = (ax + bx) / 2, my = (ay + by) / 2;
+  var dx = world.x - mx, dy = world.y - my;
+  return { lx: dx * ux + dy * uy, ly: -dx * uy + dy * ux };
+}
+
+/* 光标是否抓到滑轨条带:符号上方的箭头线区域(法向 −18..−4) */
+function wiperGrab(e, world) {
+  var loc = rheostatLocal(e, world);
+  return loc.ly <= -3.5 && loc.ly >= -18.5 && loc.lx >= -17 && loc.lx <= 17;
+}
+
 /* ---- 指针 ---- */
 
 function onDown(ev) {
+  I.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+
+  /* 双指:进入捏合/平移手势,丢弃未完成的单指手势 */
+  if (I.pointers.size === 2) {
+    cancelDrag();
+    I.pinch = { d0: pinchDist(), c0: pinchCenter(), view0: Object.assign({}, FF.render.view()) };
+    return;
+  }
+
   if (ev.button === 1 || ev.button === 2 || I.spaceDown) {
     I.drag = { mode: 'pan', sx: ev.clientX, sy: ev.clientY };
     ev.preventDefault();
@@ -198,17 +184,26 @@ function onDown(ev) {
   var world = FF.render.screenToWorld(ev.clientX, ev.clientY);
 
   /* 点开关符号中部 = 开合,与当前工具无关(橡皮除外,它负责删除) */
-  var swKey = FF.render.hitEdge(world);
-  var sw = swKey ? model.edges.get(swKey) : null;
-  if (sw && sw.type === T.SWITCH && I.tool !== 'eraser') {
-    var mx = (sw.a[0] + sw.b[0]) / 2 * G, my = (sw.a[1] + sw.b[1]) / 2 * G;
-    if (Math.hypot(world.x - mx, world.y - my) < 16) {
-      FF.render.select(swKey);
-      FF.bus.emit('selected', swKey);
-      model.toggleSwitch(swKey);
-      hint(sw.props.closed ? '开关闭合 — 电路接通' : '开关断开 — 电路断开');
+  var hitKey = FF.render.hitEdge(world);
+  var hit = hitKey ? model.edges.get(hitKey) : null;
+  if (hit && hit.type === T.SWITCH && I.tool !== 'eraser') {
+    var smx = (hit.a[0] + hit.b[0]) / 2 * G, smy = (hit.a[1] + hit.b[1]) / 2 * G;
+    if (Math.hypot(world.x - smx, world.y - smy) < 16) {
+      FF.render.select(hitKey);
+      FF.bus.emit('selected', hitKey);
+      model.toggleSwitch(hitKey);
+      hint(hit.props.closed ? '开关闭合 — 电路接通' : '开关断开 — 电路断开');
       return;
     }
+  }
+
+  /* 抓滑变滑轨 = 直接拖拽调阻值(任何工具下) */
+  if (hit && hit.type === T.RHEOSTAT && wiperGrab(hit, world)) {
+    FF.render.select(hitKey);
+    FF.bus.emit('selected', hitKey);
+    I.drag = { mode: 'wiper', edge: hit, key: hitKey, snap: model.serializeStr() };
+    hint('拖动滑片调阻值');
+    return;
   }
 
   switch (I.tool) {
@@ -226,7 +221,7 @@ function onDown(ev) {
 
     case 'wire': {
       var N = snapPoint(world);
-      I.drag = { mode: 'wire', start: N, end: N, everMoved: false, snap: model.serializeStr() };
+      I.drag = { mode: 'wire', last: N, everMoved: false, snap: model.serializeStr() };
       break;
     }
 
@@ -257,26 +252,78 @@ function onDown(ev) {
     }
   }
   if (I.drag) {
-    try { svg.setPointerCapture(ev.pointerId); } catch (err) { /* 某些环境下无效果,不影响窗口级监听 */ }
+    try { svg.setPointerCapture(ev.pointerId); } catch (err) { /* 合成事件/多点下可能抛错,窗口级监听兜底 */ }
   }
 }
 
+function pinchDist() {
+  var pts = Array.from(I.pointers.values());
+  if (pts.length < 2) return 0;
+  return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+}
+
+function pinchCenter() {
+  var pts = Array.from(I.pointers.values());
+  if (!pts.length) return { x: 0, y: 0 };
+  var cx = 0, cy = 0;
+  pts.forEach(function (p) { cx += p.x; cy += p.y; });
+  return { x: cx / pts.length, y: cy / pts.length };
+}
+
 function onMove(ev) {
+  if (I.pointers.has(ev.pointerId)) {
+    I.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  }
+
+  /* 双指手势:捏合缩放 + 中点平移(锚定手势起始视图) */
+  if (I.pinch && I.pointers.size >= 2) {
+    var d = pinchDist(), c = pinchCenter();
+    var v0 = I.pinch.view0;
+    var r = svg.getBoundingClientRect();
+    var scale = FF.clamp(I.pinch.d0 / Math.max(d, 10), 0.2, 5);
+    var nw = FF.clamp(v0.w * scale, 200, 4000);
+    var nh = nw * (r.height / r.width || 0.65);
+    FF.render.setView(
+      v0.x + v0.w / 2 - (c.x - I.pinch.c0.x) * nw / r.width - nw / 2,
+      v0.y + v0.h / 2 - (c.y - I.pinch.c0.y) * nh / r.height - nh / 2,
+      nw
+    );
+    return;
+  }
+
   var world = FF.render.screenToWorld(ev.clientX, ev.clientY);
 
   if (I.drag && I.drag.mode === 'pan') {
-    var r = svg.getBoundingClientRect();
-    FF.render.panBy((ev.clientX - I.drag.sx) * FF.render.view().w / r.width,
-                    (ev.clientY - I.drag.sy) * FF.render.view().h / r.height);
+    var r2 = svg.getBoundingClientRect();
+    FF.render.panBy((ev.clientX - I.drag.sx) * FF.render.view().w / r2.width,
+                    (ev.clientY - I.drag.sy) * FF.render.view().h / r2.height);
     I.drag.sx = ev.clientX; I.drag.sy = ev.clientY;
     return;
   }
 
+  /* 滑变滑片拖拽:投影到 [0,1] */
+  if (I.drag && I.drag.mode === 'wiper') {
+    var we = I.drag.edge;
+    if (!model.edges.get(I.drag.key)) { I.drag = null; return; }  /* 元件被删 */
+    var loc = rheostatLocal(we, world);
+    we.props.wiper = FF.clamp((loc.lx + 13) / 26, 0, 1);
+    FF.bus.emit('changed');
+    return;
+  }
+
+  /* 跟随式布线:朝光标逐格推进(主轴优先一格一格铺) */
   if (I.drag && I.drag.mode === 'wire') {
-    var N = snapPoint(world);
-    if (N[0] !== I.drag.end[0] || N[1] !== I.drag.end[1]) {
-      I.drag.end = N;
-      drawWirePreview(I.drag.start, I.drag.end);
+    var target = snapPoint(world);
+    var guard = 0;
+    while (guard++ < 64) {
+      var dx = target[0] - I.drag.last[0], dy = target[1] - I.drag.last[1];
+      if (Math.abs(dx) + Math.abs(dy) === 0) break;
+      var next;
+      if (Math.abs(dx) >= Math.abs(dy)) next = [I.drag.last[0] + Math.sign(dx), I.drag.last[1]];
+      else next = [I.drag.last[0], I.drag.last[1] + Math.sign(dy)];
+      if (model.rawPlaceWire(I.drag.last, next)) FF.bus.emit('changed');
+      I.drag.everMoved = true;
+      I.drag.last = next;
     }
     return;
   }
@@ -295,6 +342,8 @@ function onMove(ev) {
 }
 
 function onUp(ev) {
+  I.pointers.delete(ev.pointerId);
+  if (I.pinch && I.pointers.size < 2) I.pinch = null;
   if (!I.drag) return;
   var d = I.drag;
   clearPreview();
@@ -302,15 +351,19 @@ function onUp(ev) {
 
   if (d.mode === 'pan') return;
 
+  if (d.mode === 'wiper') {
+    model.commit(d.snap);   /* 整个拖拽 = 一次 undo */
+    hint('滑片位置: ' + FF.fmt(FF.solver.rOf(d.edge), 'Ω'));
+    return;
+  }
+
   if (d.mode === 'wire') {
-    var segs = pathSegments(lPath(d.start, d.end));
-    if (!segs.length) {
+    if (!d.everMoved) {
       /* 原地单击:以磁吸节点为中心放一段 */
       var world = FF.render.screenToWorld(ev.clientX, ev.clientY);
       clickPlaceSegment(world);
       return;
     }
-    segs.forEach(function (s) { model.rawPlaceWire(s[0], s[1]); });
     model.commit(d.snap);
     return;
   }
@@ -334,7 +387,7 @@ function onDblClick(ev) {
     var e = model.edges.get(key);
     if (e && e.type === T.WIRE) {
       /* 导线工具下,双击的前两次单击可能误放了支线段 —— 收回(它们是最新的变更) */
-      if (I.tool === 'wire' && I.recentPlaces && I.recentPlaces.length) {
+      if (I.tool === 'wire' && I.recentPlaces.length) {
         var now = performance.now(), n = 0;
         I.recentPlaces = I.recentPlaces.filter(function (t) {
           if (now - t < 500) { n++; return false; }
@@ -397,6 +450,7 @@ FF.interact = {
     svg.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     svg.addEventListener('dblclick', onDblClick);
     svg.addEventListener('wheel', function (ev) {
       ev.preventDefault();

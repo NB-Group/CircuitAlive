@@ -114,6 +114,10 @@ function wireActions() {
 
   $('btn-undo').addEventListener('click', function () { model.undo(); });
   $('btn-redo').addEventListener('click', function () { model.redo(); });
+  $('btn-panel').addEventListener('click', function () {
+    document.body.classList.toggle('panel-open');
+  });
+
   $('btn-clear').addEventListener('click', function () {
     model.clear();
     FF.render.select(null);
