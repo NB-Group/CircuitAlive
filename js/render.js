@@ -204,6 +204,15 @@ function syncSolution() {
   R.layers.readings.innerHTML = '';
   R.gradGroup.innerHTML = '';
 
+  /* 通电/断电检测:从死电路变活的瞬间,粒子从静止加速 */
+  var live = sol.Imax > 1e-3;
+  if (live && !prevLive) rampT0 = performance.now();
+  if (!live) rampT0 = -1;
+  prevLive = live;
+  var seenLamps = new Set();
+  m.edges.forEach(function (e) { if (e.type === T.LAMP) seenLamps.add(e.id); });
+  lampAnims.forEach(function (a, id) { if (!seenLamps.has(id)) lampAnims.delete(id); });
+
   /* 电场自适应参考:本电路无源元件的最大压降 */
   var efieldURef = 0.01;
   m.edges.forEach(function (e) {
@@ -233,7 +242,15 @@ function syncSolution() {
     /* 动态部件 */
     if (e.type === T.SWITCH) FF.symbols.setLever(rec.hooks.lever, !!e.props.closed);
     if (e.type === T.RHEOSTAT) FF.symbols.setWiper(rec.hooks, e.props.wiper);
-    if (e.type === T.LAMP) FF.symbols.setGlow(rec.hooks.glow, lampP.get(e.id) || 0);
+    if (e.type === T.LAMP) {
+      var prev = lampAnims.get(e.id);
+      lampAnims.set(e.id, {
+        el: rec.hooks.glow,
+        target: Math.min(1.2, lampP.get(e.id) || 0),
+        cur: prev ? prev.cur : 0,
+        applied: false
+      });
+    }
 
     /* 仪表读数(符号下方/右侧,恒正立;画布上显示偏转幅值,带符号值见右侧面板) */
     if (e.type === T.AMMETER || e.type === T.VOLTMETER) {
@@ -316,9 +333,25 @@ function drawEField(e, U, uRef) {
   }, g);
 }
 
-/* ---------- 粒子 ---------- */
+/* ---------- 粒子与通电动效 ---------- */
 
 var pools = new Map();   /* edgeId -> {els[], phase[], count, speed, dir} */
+var lampAnims = new Map();   /* edgeId -> {el, target, cur, applied} */
+var prevLive = false;
+var rampT0 = -1;         /* 通电时刻;<0 表示无过渡 */
+
+/* 通电加速曲线:闭合开关瞬间,电流从 0 加速到稳态 */
+function energizeRamp(now) {
+  if (rampT0 < 0) return 1;
+  var t = Math.min(1, (now - rampT0) / 450);
+  return 1 - Math.pow(1 - t, 2.2);
+}
+
+function lampsSettled() {
+  var ok = true;
+  lampAnims.forEach(function (a) { if (Math.abs(a.target - a.cur) >= 0.004) ok = false; });
+  return ok;
+}
 
 function syncParticles() {
   var sol = R.sol;
@@ -375,10 +408,12 @@ function syncParticles() {
 function tickParticles(now) {
   var dt = Math.min(0.05, (now - R.lastT) / 1000);
   R.lastT = now;
+  var ramp = energizeRamp(now);
+
   pools.forEach(function (p) {
     var e = p.edge;
     var ax = w2(e.a[0]), ay = w2(e.a[1]), bx = w2(e.b[0]), by = w2(e.b[1]);
-    var advance = p.speed * dt / G;
+    var advance = p.speed * ramp * dt / G;
     for (var i = 0; i < p.count; i++) {
       p.phase[i] = (p.phase[i] + advance) % 1;
       /* dir=1: a→b;dir=-1: b→a */
@@ -387,12 +422,25 @@ function tickParticles(now) {
       p.els[i].setAttribute('cy', FF.lerp(ay, by, t));
     }
   });
-  if (pools.size) R.raf = requestAnimationFrame(tickParticles);
+
+  /* 灯泡亮度向目标平滑逼近(开关闭合渐亮、断路渐灭、滑片连续调光) */
+  lampAnims.forEach(function (a) {
+    var d = a.target - a.cur;
+    if (Math.abs(d) < 0.004) {
+      if (!a.applied) { FF.symbols.setGlow(a.el, a.cur = a.target); a.applied = true; }
+      return;
+    }
+    a.cur += d * Math.min(1, dt * 7);
+    a.applied = false;
+    FF.symbols.setGlow(a.el, a.cur);
+  });
+
+  if (pools.size || !lampsSettled()) R.raf = requestAnimationFrame(tickParticles);
   else R.raf = null;
 }
 
 function ensureRaf() {
-  if (!R.raf && pools.size && !document.hidden) {
+  if (!R.raf && !document.hidden && (pools.size || !lampsSettled())) {
     R.lastT = performance.now();
     R.raf = requestAnimationFrame(tickParticles);
   }
