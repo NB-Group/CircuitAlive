@@ -33,12 +33,13 @@ function clampNum(v, lo, hi) {
   return FF.clamp(v, lo, hi);
 }
 
-/* 边的电阻(仅对参与求解的边调用)。导线 props.r: null=默认 1mΩ,0=理想 */
-function rOf(e) {
+/* 边的电阻(仅对参与求解的边调用)。导线电阻是全局统一值 wireR(默认 0=理想) */
+function rOf(e, wireR) {
   var p = e.props || {};
+  wireR = wireR == null ? 0 : wireR;
   switch (e.type) {
     case T.WIRE:
-      return (p.r == null || p.r === 0) ? 0 : clampNum(p.r, 1e-3, 50);  /* 默认即理想 */
+      return wireR === 0 ? 0 : clampNum(wireR, 1e-3, 50);
     case T.SWITCH: return p.closed ? R_WIRE : Infinity;
     case T.AMMETER: return R_AM;
     case T.BATTERY: return clampNum((p.r == null ? R_BAT : p.r), 0.01, 50);
@@ -187,8 +188,9 @@ function routeIdealCluster(wires, pins, Imax) {
  *   status: 'empty'|'noSource'|'short'|'open'|'normal'
  * }
  */
-function solve(edges) {
+function solve(edges, opts) {
   edges = edges || [];
+  var wireR = opts && opts.wireR != null ? opts.wireR : 0;
   var res = {
     nodePhi: new Map(),
     edgeI: new Map(),
@@ -215,7 +217,7 @@ function solve(edges) {
   var dsuComp = new DSU();    /* 全部激活边 → 连通分量 */
   active.forEach(function (e) {
     var ka = FF.nodeKey(e.a), kb = FF.nodeKey(e.b);
-    if (rOf(e) === 0) dsuSuper.union(ka, kb);
+    if (rOf(e, wireR) === 0) dsuSuper.union(ka, kb);
   });
   active.forEach(function (e) {
     dsuComp.union(dsuSuper.find(FF.nodeKey(e.a)), dsuSuper.find(FF.nodeKey(e.b)));
@@ -229,7 +231,7 @@ function solve(edges) {
     if (!g) { g = { supers: new Set(), edges: [], batteries: [], idealWires: [] }; groups.set(root, g); }
     g.supers.add(sup(FF.nodeKey(e.a)));
     g.supers.add(sup(FF.nodeKey(e.b)));
-    if (rOf(e) === 0) { g.idealWires.push(e); return; }   /* 理想导线不进矩阵 */
+    if (rOf(e, wireR) === 0) { g.idealWires.push(e); return; }   /* 理想导线不进矩阵 */
     g.edges.push(e);
     if (e.type === T.BATTERY) g.batteries.push(e);
   });
@@ -256,7 +258,7 @@ function solve(edges) {
     for (var i = 0; i < n; i++) G.push(new Array(n).fill(0));
 
     g.edges.forEach(function (e) {
-      var r = rOf(e), g1 = 1 / r, V = emfOf(e);
+      var r = rOf(e, wireR), g1 = 1 / r, V = emfOf(e);
       var ia = idx.get(sup(FF.nodeKey(e.a)));
       var ib = idx.get(sup(FF.nodeKey(e.b)));
       if (ia != null && ib != null) {
@@ -285,11 +287,11 @@ function solve(edges) {
 
   /* 非理想边支路电流(自环电池:φa=φb → I=V/r 自动成立) */
   active.forEach(function (e) {
-    if (rOf(e) === 0) return;
+    if (rOf(e, wireR) === 0) return;
     var phiA = res.nodePhi.get(FF.nodeKey(e.a));
     var phiB = res.nodePhi.get(FF.nodeKey(e.b));
     if (phiA == null || phiB == null) { res.edgeI.set(e.id, null); return; }
-    var I = (phiA - phiB + emfOf(e)) / rOf(e);
+    var I = (phiA - phiB + emfOf(e)) / rOf(e, wireR);
     if (Math.abs(I) < deadband) I = 0;
     res.edgeI.set(e.id, I);
     if (Math.abs(I) > res.Imax) res.Imax = Math.abs(I);
@@ -298,7 +300,7 @@ function solve(edges) {
   /* 理想导线:按簇做 KCL 流量路由 */
   var clusters = new Map(); /* superKey -> {wires:[], pins:Map} */
   active.forEach(function (e) {
-    if (rOf(e) !== 0) return;
+    if (rOf(e, wireR) !== 0) return;
     if (res.nodePhi.get(FF.nodeKey(e.a)) == null) { res.edgeI.set(e.id, null); return; }
     var root = sup(FF.nodeKey(e.a));
     var c = clusters.get(root);
@@ -308,7 +310,7 @@ function solve(edges) {
   /* 簇的引脚流量来自非理想边(含被理想导线短接的环流)。
      注意:一条非理想边的两端可能分属不同簇,引脚要分别归入各自簇 */
   active.forEach(function (e) {
-    if (rOf(e) === 0) return;
+    if (rOf(e, wireR) === 0) return;
     var I = res.edgeI.get(e.id);
     if (I == null) return;
     var ka = FF.nodeKey(e.a), kb = FF.nodeKey(e.b);

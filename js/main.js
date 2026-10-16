@@ -31,7 +31,7 @@ function applyPhiReference(sol, refKey) {
 }
 
 function onChange() {
-  var sol = FF.solver.solve(model.list());
+  var sol = FF.solver.solve(model.list(), { wireR: model.wireR });
   applyPhiReference(sol, FF.interact.refNode());
 
   FF.render.setSolution(sol);

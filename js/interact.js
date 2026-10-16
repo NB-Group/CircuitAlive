@@ -210,7 +210,8 @@ function onDown(ev) {
     case 'select': {
       var key = FF.render.hitEdge(world);
       if (key) {
-        FF.render.select(key);
+        var selE = model.edges.get(key);
+        FF.render.select(selE && selE.type === T.WIRE ? '__wires__' : key);
         FF.bus.emit('selected', key);
       } else {
         FF.render.select(null);

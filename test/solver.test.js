@@ -394,17 +394,20 @@ test('理想导线短接电池: I = V/r内 = 30A, U = 0, 状态 short', () => {
   assert(s.status === 'short', '状态 short');
 });
 
-/* ---------- 21. 自定义导线电阻 ---------- */
-test('自定义导线电阻 1Ω: 参与分压', () => {
+/* ---------- 21. 全局导线电阻(统一调整所有导线) ---------- */
+test('全局导线电阻 1Ω: 每段导线都参与分压', () => {
   const edges = [
     E(T.BATTERY, 0, 0, 1, 0, { V: 3 }),
-    E(T.WIRE, 1, 0, 2, 0, { r: 1 }),
+    E(T.WIRE, 1, 0, 2, 0),
     E(T.RESISTOR, 2, 0, 3, 0, { R: 10 })
-  ].concat(W(3, 0, 3, 1), W(3, 1, 0, 1), W(0, 1, 0, 0));
-  const s = solve(edges);
-  const expected = 3 / (10 + 0.1 + 1);   /* 仅这根导线有 1Ω,其余理想 */
-  approx(s.edgeI.get(edges[2].id), expected, 1e-9, 'I = V/(R + r内 + r线)');
-  approx(Math.abs(edgeU(edges[1], s)), expected * 1, 1e-6, '导线压降 = I×1Ω');
+  ].concat(W(3, 0, 3, 1), W(3, 1, 0, 1), W(0, 1, 0, 0));   /* 1+1+3+1 = 6 段导线 */
+  const s = solve(edges, { wireR: 1 });                     /* 全部导线统一 1Ω */
+  const expected = 3 / (10 + 0.1 + 6 * 1);
+  approx(s.edgeI.get(edges[2].id), expected, 1e-9, 'I = V/(R + r内 + 6×r线)');
+  approx(Math.abs(edgeU(edges[1], s)), expected * 1, 1e-6, '每段导线压降 = I×1Ω');
+  /* 全局改回理想,导线严格等势 */
+  const s0 = solve(edges);
+  assert(s0.nodePhi.get('1,0') === s0.nodePhi.get('2,0'), 'wireR=0 时导线严格等势');
 });
 
 /* ---------- 22. 默认导线即理想 ---------- */

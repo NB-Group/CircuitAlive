@@ -14,6 +14,7 @@ var UNDO_CAP = 100;
 
 function Model() {
   this.edges = new Map();   /* edgeKey -> edge */
+  this.wireR = 0;           /* 全局导线电阻(0 = 理想);所有导线统一 */
   this.undoStack = [];
   this.redoStack = [];
 }
@@ -26,8 +27,10 @@ Model.prototype.list = function () {
 Model.prototype.serialize = function () {
   return {
     v: 1,
+    wireR: this.wireR || 0,
     edges: this.list().map(function (e) {
-      return { id: e.id, t: e.type, a: e.a, b: e.b, p: e.props };
+      var p = e.type === T.WIRE ? {} : e.props;   /* 导线不再有个体属性 */
+      return { id: e.id, t: e.type, a: e.a, b: e.b, p: p };
     })
   };
 };
@@ -36,6 +39,12 @@ Model.prototype.restore = function (data) {
   this.edges.clear();
   var self = this;
   var maxId = 0;
+  this.wireR = 0;
+  /* 旧版数据迁移:曾有单根导线自定义电阻 → 取第一个非零值作全局值 */
+  (data && data.edges || []).forEach(function (r) {
+    if (r.t === T.WIRE && r.p && r.p.r > 0 && self.wireR === 0) self.wireR = r.p.r;
+  });
+  if (data && data.wireR) this.wireR = data.wireR;
   (data && data.edges || []).forEach(function (r) {
     var e = FF.E(r.t, r.a[0], r.a[1], r.b[0], r.b[1], r.p);
     e.id = r.id;                      /* 保留原 id,渲染层可做增量更新 */
@@ -80,7 +89,15 @@ Model.prototype.canRedo = function () { return this.redoStack.length > 0; };
 
 Model.prototype.clear = function () {
   var self = this;
-  this.mutate(function () { self.edges.clear(); });
+  this.mutate(function () { self.edges.clear(); self.wireR = 0; });
+};
+
+/* 全局导线电阻(所有导线统一;0 = 理想) */
+Model.prototype.setWireR = function (v) {
+  var self = this;
+  return this.mutate(function () {
+    self.wireR = v === 0 ? 0 : FF.clamp(+v || 0.001, 0.001, 50);
+  });
 };
 
 /* ---- 批量拖画支持:拖拽过程直接改,松手时一次 commit ----

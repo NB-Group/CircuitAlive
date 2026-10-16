@@ -22,7 +22,7 @@ function $(id) { return document.getElementById(id); }
 /* 严格定义式(工具的灵魂:用高中的可定义概念讲初中的元件) */
 var DEFS = {};
 DEFS[T.BATTERY] = '<b>电动势 E</b>:电源内非静电力把单位正电荷从负极移到正极所做的功(单位 V)。闭合电路欧姆定律 <b>U = E − I·r</b>:内阻 r 默认 0.1 Ω(真实干电池量级,可在下方修改)。短路时电流只受 r 限制,电动势几乎全降在电源内部,端电压≈0、导线几乎等势。';
-DEFS[T.WIRE] = '导线<b>默认即理想导线(等势体)</b>:两端 U = 0,内部 E = 0,求解时整段合并为同一节点。要模拟真实导线的压降,可给电阻设一个大于 0 的值(真实铜线每米毫欧量级)。';
+DEFS[T.WIRE] = '所有导线<b>统一为一根理想导线(等势体)</b>:U = 0,内部 E = 0,整段合并为同一节点。要演示真实导线的压降,在下方统一调电阻;若只想要某一段有电阻,那应该用<b>电阻元件</b>表达。';
 DEFS[T.RESISTOR] = '电阻定义式 <b>R = U/I</b>:这个比值由导体本身(材料、长度、横截面积)决定 —— U/I 只是<b>量度</b>它,不是电压"产生"了电阻。';
 DEFS[T.LAMP] = '灯泡亮度由<b>实际功率 P = U·I</b> 决定,不是由电流或电压单独决定。';
 DEFS[T.RHEOSTAT] = '靠改变接入电路的电阻丝<b>长度</b>来改变电阻:接入越长,R 越大(与横截面积、材料共同决定 R)。';
@@ -34,7 +34,7 @@ DEFS[T.SWITCH] = '闭合 = 电阻 0(通路);断开 = 电阻 ∞(断路,该支路
 function labelEdges(model) {
   var counters = {}, labels = new Map();
   model.list().sort(function (a, b) { return a.id - b.id; }).forEach(function (e) {
-    var base = { battery: 'E', resistor: 'R', lamp: 'L', rheostat: 'R′', switch: 'S', ammeter: 'A', voltmeter: 'V', wire: '导线' }[e.type];
+    var base = { battery: 'E', resistor: 'R', lamp: 'L', rheostat: 'R′', switch: 'S', ammeter: 'A', voltmeter: 'V' }[e.type];
     if (!base) return;
     counters[e.type] = (counters[e.type] || 0) + 1;
     labels.set(e.id, base + sub(counters[e.type]));
@@ -135,14 +135,13 @@ function renderInspector(model, sol, labels) {
   var box = $('inspector-body');
   box.innerHTML = '';
   var key = FF.render.selectedKey();
+  if (key === '__wires__') { renderWireInspector(box, model, sol); return; }
   var e = key ? model.edges.get(key) : null;
   if (!e) { box.innerHTML = '<div class="panel-empty">点击画布上的元件</div>'; return; }
 
   var name = document.createElement('div');
   name.className = 'insp-name';
-  name.textContent = FF.TYPE_NAME[e.type] +
-    (e.type === T.WIRE ? ' (' + e.a[0] + ',' + e.a[1] + ')–(' + e.b[0] + ',' + e.b[1] + ')'
-     : (labels.get(e.id) ? ' ' + labels.get(e.id) : ''));
+  name.textContent = FF.TYPE_NAME[e.type] + (labels.get(e.id) ? ' ' + labels.get(e.id) : '');
   box.appendChild(name);
 
   var def = document.createElement('div');
@@ -153,12 +152,6 @@ function renderInspector(model, sol, labels) {
   /* 可编辑参数 */
   var P = e.props;
   function setProp(patch) { model.setProps(key, patch); }
-
-  if (e.type === T.WIRE) {
-    box.appendChild(numRow('电阻 r (0=理想)', 'Ω', P.r == null ? 0 : P.r, 0, 50, 0.001, function (v) {
-      setProp({ r: v === 0 ? 0 : FF.clamp(v, 0.001, 50) });
-    }));
-  }
 
   if (e.type === T.BATTERY) {
     box.appendChild(numRow('电动势 E', 'V', P.V || 3, 0.1, 24, 0.1, function (v) {
@@ -244,7 +237,6 @@ function renderInspector(model, sol, labels) {
   } else if (e.type === T.WIRE) {
     html += kv('电流 I', I == null ? '—' : FF.fmt(I, 'A'));
     html += kv('两端 U', U == null ? '—' : FF.fmt(U, 'V'));
-    html += kv('电阻 r', FF.solver.rOf(e) === 0 ? '理想' : FF.fmt(FF.solver.rOf(e), 'Ω'));
   } else if (e.type === T.SWITCH) {
     html += kv('电流 I', I == null ? '—' : FF.fmt(I || 0, 'A'));
     html += kv('两端 U', U == null ? '—' : FF.fmt(U, 'V'));
@@ -265,33 +257,71 @@ function renderInspector(model, sol, labels) {
   box.appendChild(act);
 }
 
+/* 导线是全局统一的整体:一个检查器管所有导线 */
+function renderWireInspector(box, model, sol) {
+  var count = 0, maxU = 0;
+  model.edges.forEach(function (e) {
+    if (e.type !== T.WIRE) return;
+    count++;
+    var U = FF.solver.edgeU(e, sol);
+    if (U != null && Math.abs(U) > maxU) maxU = Math.abs(U);
+  });
+
+  var name = document.createElement('div');
+  name.className = 'insp-name';
+  name.textContent = '导线(全部统一)';
+  box.appendChild(name);
+
+  var def = document.createElement('div');
+  def.className = 'insp-def';
+  def.innerHTML = DEFS[T.WIRE];
+  box.appendChild(def);
+
+  box.appendChild(numRow('电阻 r (0=理想)', 'Ω', model.wireR, 0, 50, 0.001, function (v) {
+    model.setWireR(v === 0 ? 0 : v);
+  }));
+
+  var vals = document.createElement('div');
+  vals.className = 'insp-vals';
+  vals.innerHTML =
+    '<div class="kv"><span>段数</span><b>' + count + '</b></div>' +
+    '<div class="kv"><span>每段 r</span><b>' + (model.wireR === 0 ? '理想' : FF.fmt(model.wireR, 'Ω')) + '</b></div>' +
+    '<div class="kv"><span>最大单段压降</span><b>' + (count ? FF.fmt(maxU, 'V') : '—') + '</b></div>' +
+    '<div class="kv"><span>状态</span><b>' + (model.wireR === 0 ? '等势体' : '电阻性') + '</b></div>';
+  box.appendChild(vals);
+}
+
 /* ---------- 元件明细表 ---------- */
 
 function renderTable(model, sol, labels) {
   var box = $('element-table');
-  var comps = model.list()
-    .sort(function (a, b) {
-      /* 元件在前,导线按 id 跟在后面 */
-      var wa = a.type === T.WIRE ? 1 : 0, wb = b.type === T.WIRE ? 1 : 0;
-      return wa - wb || a.id - b.id;
-    });
-  if (!comps.length) { box.innerHTML = '<div class="panel-empty">无元件</div>'; return; }
+  var comps = model.list().filter(function (e) { return e.type !== T.WIRE; })
+    .sort(function (a, b) { return a.id - b.id; });
+  var nWires = model.list().filter(function (e) { return e.type === T.WIRE; }).length;
+  if (!comps.length && !nWires) { box.innerHTML = '<div class="panel-empty">无元件</div>'; return; }
   var selKey = FF.render.selectedKey();
   var html = '<table class="el-table"><thead><tr>' +
     '<th>元件</th><th>U/V</th><th>I/A</th><th>R/Ω</th><th>P/W</th></tr></thead><tbody>';
   comps.forEach(function (e) {
     var I = sol.edgeI.get(e.id);
     var U = FF.solver.edgeU(e, sol);
-    var R = (e.type === T.RESISTOR || e.type === T.LAMP || e.type === T.RHEOSTAT || e.type === T.WIRE)
-      ? (FF.solver.rOf(e) === 0 ? '理想' : FF.fmt(FF.solver.rOf(e), '')) : '—';
+    var R = (e.type === T.RESISTOR || e.type === T.LAMP || e.type === T.RHEOSTAT)
+      ? FF.fmt(FF.solver.rOf(e), '') : '—';
     var P = (I == null || U == null) ? '—' : FF.fmt(Math.abs(U * I), '');
-    var tip = e.type === T.WIRE ? ' title="(' + e.a + ')–(' + e.b + ')"' : '';
-    html += '<tr class="cur' + (e.key === selKey ? ' sel' : '') + '" data-key="' + e.key + '"' + tip + '>' +
+    html += '<tr class="cur' + (e.key === selKey ? ' sel' : '') + '" data-key="' + e.key + '">' +
       '<td>' + FF.TYPE_NAME[e.type] + ' ' + (labels.get(e.id) || '') + '</td>' +
       '<td>' + (U == null ? '—' : FF.fmt(U, '')) + '</td>' +
       '<td>' + (I == null ? '—' : FF.fmt(I, '')) + '</td>' +
       '<td>' + R + '</td><td>' + P + '</td></tr>';
   });
+  /* 所有导线 = 一个整体,一行代表,点击进入统一设置 */
+  if (nWires) {
+    html += '<tr class="cur' + (selKey === '__wires__' ? ' sel' : '') + '" data-key="__wires__">' +
+      '<td>导线(全部 ' + nWires + ' 段)</td>' +
+      '<td>—</td><td>—</td>' +
+      '<td>' + (model.wireR === 0 ? '理想' : FF.fmt(model.wireR, '')) + '</td>' +
+      '<td>—</td></tr>';
+  }
   html += '</tbody></table>';
   box.innerHTML = html;
   box.querySelectorAll('tr[data-key]').forEach(function (tr) {
