@@ -65,12 +65,11 @@ BUILDERS[T.RESISTOR] = function (g, angle, props) {
   el('rect', { x: -11, y: -6.5, width: 22, height: 13, 'class': 'fill-paper' }, g);
 };
 
-/* 小灯泡:圆圈内打叉 + 三层伪 HDR 光晕(外晕/泛光/白热核),亮度连续受控 */
+/* 小灯泡:圆圈内打叉 + 双层伪 HDR 光晕(泛光/白热核),亮度连续受控 */
 BUILDERS[T.LAMP] = function (g, angle, props) {
   var glow = el('g', { opacity: 0 }, g);
   glow.setAttribute('data-hook', 'glow');
-  el('circle', { cx: 0, cy: 0, r: 19, fill: 'url(#lamp-glow)', 'data-part': 'halo' }, glow);
-  el('circle', { cx: 0, cy: 0, r: 9.5, fill: '#ffca66', filter: 'url(#lamp-bloom)', 'data-part': 'bloom' }, glow);
+  el('circle', { cx: 0, cy: 0, r: 10.5, fill: '#ffca66', filter: 'url(#lamp-bloom)', 'data-part': 'bloom' }, glow);
   el('circle', { cx: 0, cy: 0, r: 4, fill: 'url(#lamp-core)', 'data-part': 'core' }, glow);
   line(g, -HALF, 0, -8.5, 0);
   line(g, 8.5, 0, HALF, 0);
@@ -156,16 +155,17 @@ FF.symbols = {
     if (hooks['wiper-knob']) hooks['wiper-knob'].setAttribute('cx', x);
   },
 
-  /* 灯泡光晕强度(0..1.2,可过曝):三层联动,亮度连续 */
+  /* 灯泡光晕强度(0..1.2,可过曝):泛光 + 白热核联动,亮度连续 */
   setGlow: function (hookEl, k) {
     if (!hookEl) return;
     k = FF.clamp(k, 0, 1.2);
     hookEl.setAttribute('opacity', Math.min(1, k * 1.05).toFixed(3));
-    var halo = hookEl.querySelector('[data-part="halo"]');
     var bloom = hookEl.querySelector('[data-part="bloom"]');
     var core = hookEl.querySelector('[data-part="core"]');
-    if (halo) halo.setAttribute('r', (13 + 7 * k).toFixed(1));
-    if (bloom) bloom.setAttribute('opacity', (k * 0.62).toFixed(3));
+    if (bloom) {
+      bloom.setAttribute('r', (8.5 + 3.5 * k).toFixed(1));
+      bloom.setAttribute('opacity', (k * 0.62).toFixed(3));
+    }
     if (core) {
       core.setAttribute('r', (3 + 3.4 * k).toFixed(1));
       core.setAttribute('opacity', Math.min(1, k * 1.35).toFixed(3));
