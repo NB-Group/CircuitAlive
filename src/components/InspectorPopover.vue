@@ -45,9 +45,9 @@ const STATE_SHORT = { normal: '正常', open: '断路', short: '短路', noSourc
 /* ---------- 元件 / 编号 ---------- */
 const SUB = '₀₁₂₃₄₅₆₇₈₉'
 function sub(n) {
-  if (n <= 0) return '₁'
+  if (n <= 0) return ''
   let s = ''
-  while (n > 0) { s = SUB[n % 10 + 1] + s; n = Math.floor(n / 10) }
+  while (n > 0) { s = SUB[n % 10] + s; n = Math.floor(n / 10) }
   return s || '₁'
 }
 
@@ -68,6 +68,7 @@ const labels = computed(() => {
 const isWires = computed(() => props.edgeKey === '__wires__')
 
 const edge = computed(() => {
+  void props.model.version   /* 依赖模型版本:撤销/删除/改参数后重算 */
   if (!props.edgeKey || isWires.value) return null
   return props.model.edges.get(props.edgeKey) || null
 })
@@ -98,12 +99,22 @@ const I = computed(() => {
 const U = computed(() => {
   const e = edge.value
   if (!e || !sol.value) return null
+  /* 电压表:读数定义为 φ(+接线柱) − φ(−接线柱),b 端为 + 接线柱。
+     其余元件沿用 solver.edgeU(φa − φb,沿 a→b 的压降)。 */
+  if (e.type === T.VOLTMETER) {
+    const pa = sol.value.nodePhi.get(nodeKey(e.a))
+    const pb = sol.value.nodePhi.get(nodeKey(e.b))
+    return (pa == null || pb == null) ? null : pb - pa
+  }
   return solver.edgeU(e, sol.value)
 })
 
 const R = computed(() => {
   const e = edge.value
   if (!e) return null
+  /* 依赖 solution:模型属性是原地修改的普通对象,不读一次 prop
+     这个 computed 不会在参数变更后重新求值 */
+  void props.solution
   if (e.type === T.AMMETER) return solver.R_AM
   const r = solver.rOf(e, props.model.wireR)
   return isFinite(r) ? r : null
@@ -174,10 +185,12 @@ function onNumChange(p, ev) {
 /* 滑片:拖动实时变阻,整个手势一次 undo */
 let sliderSnap = null
 const wiperValue = computed(() => {
+  void props.solution
   const e = edge.value
   return e ? (e.props.wiper == null ? 1 : e.props.wiper) : 0
 })
 const wiperR = computed(() => {
+  void props.solution
   const e = edge.value
   return e ? solver.rOf(e, props.model.wireR) : 0
 })

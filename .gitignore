@@ -1,5 +1,9 @@
 node_modules/
 dist/
+.verify-dist/
+.verify-entry.js
+.verify.config.js
+.verify.html
 .DS_Store
 *.swp
 *.log

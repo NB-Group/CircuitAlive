@@ -35,6 +35,7 @@ const svgEl = ref(null)
 let R = null
 let lastSol = null
 let fitted = false
+let fittedNonEmpty = false
 
 /* ---------- 内部交互状态 ---------- */
 const I = {
@@ -46,7 +47,6 @@ const I = {
   ghost: null,
   lp: null,           /* 长按计时器 */
   suppressUp: false,  /* 长按已消费本次手势,抬手不再放置/切换 */
-  refNode: null,
   recentPlaces: []
 }
 
@@ -96,6 +96,11 @@ function emitViewport() {
 
 function onModelChanged() {
   syncStructure()
+  /* 首次拿到非空电路(父层 mounted 里载入预置)时补一次适配视图 */
+  if (!fittedNonEmpty && props.model.edges.size) {
+    fittedNonEmpty = true
+    if (R) { R.fitView(); emitViewport() }
+  }
   /* 父层在同一轮事件里会重算 solution;等它落到 prop 上再画解层。
      若父层没有重算(同引用),这里补一次,避免读数停在旧值。 */
   Promise.resolve().then(() => {
@@ -297,7 +302,6 @@ function onDown(ev) {
     return
   }
   if (ev.button !== 0) return
-
   /* 触摸/笔:先布好长按计时器(命中任意边即可) */
   if (touch && hitKey) startLongPress(ev, hitKey)
 
@@ -328,10 +332,11 @@ function onDown(ev) {
 
   switch (props.tool) {
     case 'select': {
+      /* 鼠标单击已经在上面的指针按下里同步完成,这里不重复派发
+         edge-click —— 否则父层可能在同一事件里把检查器开两遍。 */
       if (hitKey) {
         const selE = props.model.edges.get(hitKey)
         selectKey(selE && selE.type === T.WIRE ? '__wires__' : hitKey)
-        emit('edge-click', hitKey)
       } else {
         selectKey(null)
       }
@@ -571,7 +576,8 @@ function onContextMenu(ev) { ev.preventDefault() }
 
 function isTyping(ev) {
   const t = ev.target
-  return t && /INPUT|SELECT|TEXTAREA|BUTTON/.test(t.tagName)
+  /* 只排除真正的文本输入;按钮获得焦点时 R/Delete/F 仍应生效 */
+  return t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)
 }
 
 function onKeyDown(ev) {
@@ -596,7 +602,7 @@ function onKeyDown(ev) {
     case 'Escape':
       cancelDrag()
       selectKey(null)
-      hint(HINTS[props.tool] || '')
+      emit('escape')
       break
     case 'r': case 'R': {
       const sk = currentSelected()

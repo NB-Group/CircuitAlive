@@ -13,6 +13,8 @@ import { decodeCircuit } from '../core/share.js'
 import CircuitCanvas from '../components/CircuitCanvas.vue'
 import InspectorPopover from '../components/InspectorPopover.vue'
 import { presets } from '../data/presets.js'
+import { getProblem } from '../data/problems.js'
+import MathText from '../components/MathText.vue'
 
 const props = defineProps({ theme: String, id: String })
 const emit = defineEmits(['toggle-theme'])
@@ -34,6 +36,8 @@ const opts = ref({
 
 /* 当前检查的元件:长按/右键/选中后浮出检查器 */
 const inspectedKey = computed(() => selectedKey.value)
+const problem = ref(null)
+const showAnswer = ref(false)
 
 function resolve() {
   const sol = solver.solve(model.value.list(), { wireR: model.value.wireR })
@@ -52,12 +56,18 @@ onMounted(() => {
     } catch (e) {
       console.warn('分享链接解析失败', e)
     }
+  } else if (props.id) {
+    /* 题库题目:载入题干电路 */
+    const prob = getProblem(props.id)
+    if (prob) {
+      problem.value = prob
+      model.value.loadPreset(prob.circuit)
+    }
   } else if (route.query.preset) {
     const p = presets.find(x => x.id === route.query.preset)
     if (p) model.value.loadPreset(p.tuples)
-  } else if (!model.value.edges.size) {
-    model.value.loadPreset(presets[0].tuples)
   }
+  /* 无任何参数 = 空白画布,不再默认载入串联预置 */
   resolve()
   bus.on('changed', onChanged)
 })
@@ -67,15 +77,17 @@ onBeforeUnmount(() => {
 })
 
 /* 元件栏图标:把 symbols 的 SVG 转成 HTML 字符串 */
-const palette = PALETTE.map(it => ({
+const palette = [{ type: 'select', name: '选择', icon: '' }].concat(PALETTE.map(it => ({
   ...it,
   icon: (() => {
+    if (it.type === 'select') return '<svg width="56" height="36" viewBox="-30 -22 60 44"><path d="M -4 -9 L 8 3 L 1 4 L 5 11 L 2 12 L -2 5 L -7 10 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'
     const svg = symbols.paletteIcon(it.type, it.props)
     return svg.outerHTML
   })()
-}))
+})))
 
 function pick(item) {
+  if (item.type === 'select') { setTool('select'); return }
   if (item.type === 'eraser') { setTool('eraser'); return }
   setTool(item.type, item.type === 'switch' ? { closed: false } : JSON.parse(JSON.stringify(item.props || {})))
 }
@@ -130,6 +142,19 @@ const stateText = computed(() => {
         </button>
       </aside>
 
+      <aside v-if="problem" class="problem-strip">
+        <div class="prob-head">
+          <span class="ff-h">题目</span>
+          <span class="prob-title">{{ problem.title }}</span>
+          <button class="ff-btn ghost" @click="showAnswer = !showAnswer">{{ showAnswer ? '收起解析' : '查看解析' }}</button>
+        </div>
+        <MathText class="prob-text" :text="problem.statement" />
+        <div v-if="showAnswer" class="prob-answer">
+          <MathText :text="problem.answer" />
+          <MathText :text="problem.solution" />
+        </div>
+      </aside>
+
       <CircuitCanvas
         :model="model"
         :solution="solution"
@@ -138,6 +163,7 @@ const stateText = computed(() => {
         :armed="armed"
         @select="onSelect"
         @changed="resolve"
+        @escape="setTool('select')"
       />
 
       <InspectorPopover
@@ -187,4 +213,16 @@ const stateText = computed(() => {
 .pal-icon :deep(svg) { display: block; width: 100%; height: 100%; }
 .pal-name { font-size: 11px; color: var(--ink-soft); }
 .pal-btn.active .pal-name { color: var(--ink); }
+
+.problem-strip {
+  position: absolute; left: 108px; right: 12px; top: 10px; z-index: 5;
+  padding: 10px 14px; background: var(--paper-panel);
+  border: 1px solid var(--hairline); border-radius: var(--radius);
+  box-shadow: var(--shadow-soft); max-height: 38vh; overflow-y: auto;
+}
+.prob-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.prob-title { font-family: var(--serif); font-weight: 700; font-size: 14px; }
+.prob-head .ff-btn { margin-left: auto; }
+.prob-text { font-size: 13px; line-height: 1.9; }
+.prob-answer { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--hairline); font-size: 13px; line-height: 1.9; }
 </style>

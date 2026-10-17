@@ -41,6 +41,9 @@ function rOf(e, wireR) {
     case T.BATTERY: return clampNum((p.r == null ? R_BAT : p.r), 0.01, 50);
     case T.RESISTOR:
     case T.LAMP: return clampNum(p.R, LIMITS.R[0], LIMITS.R[1]);
+    /* 电动机/电铃是真实负载,必须有有限电阻,否则会被当成开路 */
+    case T.MOTOR:
+    case T.BELL: return clampNum(p.R == null ? 7.2 : p.R, LIMITS.R[0], LIMITS.R[1]);
     case T.RHEOSTAT: {
       var Rmax = clampNum(p.Rmax, LIMITS.Rmax[0], LIMITS.Rmax[1]);
       var w = clampNum(p.wiper == null ? 1 : p.wiper, 0, 1);
@@ -271,7 +274,13 @@ function solve(edges, opts) {
     });
 
     var x = n > 0 ? gauss(G, J) : [];
-    if (n > 0 && !x) x = supers.map(function () { return 0; }); /* 保险:不应发生 */
+    if (n > 0 && !x) {
+      /* 奇异矩阵:该分量无法求解。宁可标记未解,也不能静默置零
+         (置零会让电池电流变成 V/r 并误判为短路) */
+      comp.singular = true;
+      nodes.forEach(function (k) { res.nodePhi.set(k, null); });
+      return;
+    }
 
     var phiSuper = new Map();
     supers.forEach(function (k) { phiSuper.set(k, k === ground ? 0 : x[idx.get(k)]); });

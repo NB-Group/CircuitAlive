@@ -1,11 +1,19 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 
-const theme = ref(localStorage.getItem('ff-theme') || 'light')
+/* 隐私模式/沙箱 iframe 里 localStorage 可能直接抛异常,不能让它拖垮整个应用 */
+function safeGet(key, fallback) {
+  try { return localStorage.getItem(key) || fallback } catch (e) { return fallback }
+}
+function safeSet(key, value) {
+  try { localStorage.setItem(key, value) } catch (e) { /* 静默:只是不记住偏好 */ }
+}
+
+const theme = ref(safeGet('ff-theme', 'light'))
 
 function apply(t) {
   document.documentElement.setAttribute('data-theme', t)
-  localStorage.setItem('ff-theme', t)
+  safeSet('ff-theme', t)
 }
 
 onMounted(() => apply(theme.value))

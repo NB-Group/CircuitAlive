@@ -132,8 +132,9 @@ function meter(g, angle, letter, showText) {
 BUILDERS[T.AMMETER] = function (g, angle, props, showText) { meter(g, angle, 'A', showText); };
 BUILDERS[T.VOLTMETER] = function (g, angle, props, showText) { meter(g, angle, 'V', showText); };
 
-/* 电动机:圆圈 + 字母 M + 转子标记(虚线环 + 径向短线,通电时旋转)。
- * 径向线从字母外侧画到环上,不穿过 M,避免 90°/270° 时糊成一团。 */
+/* 电动机:圆圈 + 字母 M + 转子标记(虚线环 + 两段径向短线,通电时旋转)。
+ * 字母由 render 的未旋转文字层画在圆心;这里的径向线只落在字母上下的
+ * 空白扇区里,不穿过 M,避免 90°/270° 时糊成一团。 */
 BUILDERS[T.MOTOR] = function (g, angle, props, showText) {
   line(g, -HALF, 0, -9.5, 0);
   line(g, 9.5, 0, HALF, 0);
@@ -141,11 +142,11 @@ BUILDERS[T.MOTOR] = function (g, angle, props, showText) {
   const rotor = el('g', { class: 'motor-rotor' }, g);
   rotor.setAttribute('data-hook', 'rotor');
   el('circle', {
-    cx: 0, cy: 0, r: 6.8, class: 'thin motor-rotor-ring',
-    'stroke-dasharray': '2.4 4.2'
+    cx: 0, cy: 0, r: 7.8, class: 'thin motor-rotor-ring',
+    'stroke-dasharray': '2 5.2'
   }, rotor);
-  line(rotor, 0, -4.6, 0, -7.4, 'thin');
-  line(rotor, 0, 4.6, 0, 7.4, 'thin');
+  line(rotor, 0, -5.9, 0, -7.8, 'thin');
+  line(rotor, 0, 5.9, 0, 7.8, 'thin');
   if (showText) text(g, 0, 4, 'M', 11, angle);
 };
 
@@ -208,8 +209,8 @@ function setWiper(hooks, wiper) {
 }
 
 /* 灯泡光晕强度(0..1.2,可过曝):暖色泛光 + 白热核 + 纸面投影光。
- * 泛光本身有 filter 模糊,单独把它放大 2.2 倍,视觉直径才与纸面暖光匹配;
- * 这样在 40px 的网格里,灯也像真的在往周围纸上打光。 */
+ * 泛光带模糊滤镜,半径随功率放大;纸面光透明度压得很低,只做"照亮周围"
+ * 的氛围,不参与亮度编码。 */
 function setGlow(hookEl, k) {
   if (!hookEl) return;
   k = clamp(k, 0, 1.2);
@@ -222,16 +223,16 @@ function setGlow(hookEl, k) {
     bloom.setAttribute('opacity', (k * 0.8).toFixed(3));
   }
   if (core) {
-    core.setAttribute('r', (3 + 4.2 * k).toFixed(1));
-    core.setAttribute('opacity', Math.min(1, k * 1.35).toFixed(3));
+    core.setAttribute('r', (2.6 + 5.2 * k).toFixed(1));
+    core.setAttribute('opacity', Math.min(1, k * 1.4).toFixed(3));
   }
   if (cast) {
     cast.setAttribute('r', (18 + 20 * k).toFixed(1));
-    cast.setAttribute('opacity', (k * 0.3).toFixed(3));
+    cast.setAttribute('opacity', (k * 0.24).toFixed(3));
   }
   const filaments = hookEl.querySelectorAll('[data-part="filament"]');
   for (let i = 0; i < filaments.length; i++) {
-    filaments[i].setAttribute('opacity', Math.min(1, k * 1.2).toFixed(3));
+    filaments[i].setAttribute('opacity', Math.min(1, k * 1.25).toFixed(3));
   }
 }
 

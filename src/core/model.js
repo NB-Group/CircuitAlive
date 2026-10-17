@@ -9,9 +9,14 @@ import { T, E, edgeKey, nodeKey, clamp, nextId, setSeq, bus } from './util.js';
 
 const UNDO_CAP = 100;
 
+/* props 必须深拷贝:同一工具连续放置的元件不能共享同一个对象,
+   否则改一个元件的参数会连带改掉所有同类元件 */
+const cloneProps = (p) => JSON.parse(JSON.stringify(p || {}));
+
 function Model() {
   this.edges = new Map();   /* edgeKey -> edge */
   this.wireR = 0;           /* 全局导线电阻(0 = 理想);所有导线统一 */
+  this.version = 0;         /* 每次变更自增:供 Vue 侧做响应式依赖 */
   this.undoStack = [];
   this.redoStack = [];
 }
@@ -33,6 +38,7 @@ Model.prototype.serialize = function () {
 };
 
 Model.prototype.restore = function (data) {
+  this.version++;
   this.edges.clear();
   var self = this;
   var maxId = 0;
@@ -43,7 +49,7 @@ Model.prototype.restore = function (data) {
   });
   if (data && data.wireR) this.wireR = data.wireR;
   (data && data.edges || []).forEach(function (r) {
-    var e = E(r.t, r.a[0], r.a[1], r.b[0], r.b[1], r.p);
+    var e = E(r.t, r.a[0], r.a[1], r.b[0], r.b[1], cloneProps(r.p));
     e.id = r.id;                      /* 保留原 id,渲染层可做增量更新 */
     e.key = edgeKey(r.a, r.b);
     if (r.id > maxId) maxId = r.id;
@@ -56,6 +62,7 @@ Model.prototype.restore = function (data) {
 Model.prototype.mutate = function (fn) {
   var snap = JSON.stringify(this.serialize());
   var result = fn();
+  this.version++;
   /* 无实际变化时不污染 undo 栈 */
   if (snap === JSON.stringify(this.serialize())) return result;
   this.undoStack.push(snap);
@@ -67,6 +74,7 @@ Model.prototype.mutate = function (fn) {
 
 Model.prototype.undo = function () {
   if (!this.undoStack.length) return false;
+  this.version++;
   this.redoStack.push(JSON.stringify(this.serialize()));
   this.restore(JSON.parse(this.undoStack.pop()));
   bus.emit('changed');
@@ -75,6 +83,7 @@ Model.prototype.undo = function () {
 
 Model.prototype.redo = function () {
   if (!this.redoStack.length) return false;
+  this.version++;
   this.undoStack.push(JSON.stringify(this.serialize()));
   this.restore(JSON.parse(this.redoStack.pop()));
   bus.emit('changed');
@@ -117,6 +126,7 @@ Model.prototype.rawRemove = function (key) {
 
 Model.prototype.commit = function (snapshotStr) {
   if (snapshotStr === this.serializeStr()) return false;
+  this.version++;
   this.undoStack.push(snapshotStr);
   if (this.undoStack.length > UNDO_CAP) this.undoStack.shift();
   this.redoStack.length = 0;
@@ -132,7 +142,7 @@ Model.prototype.place = function (type, a, b, props) {
     var key = edgeKey(a, b);
     var occ = self.edges.get(key);
     if (occ && occ.type !== T.WIRE) return false;
-    var e = E(type, a[0], a[1], b[0], b[1], props || {});
+    var e = E(type, a[0], a[1], b[0], b[1], cloneProps(props));
     self.edges.set(key, e);
     return e;
   });
@@ -195,7 +205,7 @@ Model.prototype.loadPreset = function (edgeTuples) {
   this.mutate(function () {
     self.edges.clear();
     edgeTuples.forEach(function (t) {
-      var e = E(t[0], t[1], t[2], t[3], t[4], t[5] || {});
+      var e = E(t[0], t[1], t[2], t[3], t[4], cloneProps(t[5]));
       self.edges.set(e.key, e);
     });
   });

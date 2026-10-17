@@ -52,7 +52,7 @@ FieldFlow 只做初中直流电路,重点放在定义和读数上。每个元件
 
 ## 本地运行
 
-需要 Node.js 20.19 或更新版本(Vite 8 的要求)。
+需要 Node.js 18 或更新版本。
 
 ```bash
 npm install
@@ -83,7 +83,13 @@ node test/solver.test.js
 node test/share.test.js
 ```
 
-`test/drag-test.html` 用合成指针事件回放真实手势,验证布线、放置、开关开合和渲染定位。用浏览器直接打开即可。
+画布手势的回归测试在 `test/interaction.test.js`,通过 Node 直接运行:
+
+```bash
+node test/interaction.test.js
+```
+
+它覆盖吸附布线、跟随式拖画、开关开合、滑片拖拽、触摸点击延迟与捏合回滚。
 
 ## 物理约定
 

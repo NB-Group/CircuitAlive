@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node test/solver.test.js && node test/share.test.js"
+    "test": "node test/solver.test.js && node test/share.test.js && node test/interaction.test.js"
   },
   "dependencies": {
     "vue": "^3.5.42",

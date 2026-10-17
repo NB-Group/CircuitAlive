@@ -117,7 +117,7 @@ function makeRenderer(svg) {
 
   /* ---------- 图层 ---------- */
 
-  const LAYER_NAMES = ['defs', 'underlay', 'edges', 'junctions', 'efield', 'readings', 'symbol-text', 'particles', 'overlay'];
+  const LAYER_NAMES = ['defs', 'grid', 'underlay', 'edges', 'junctions', 'efield', 'readings', 'symbol-text', 'particles', 'overlay'];
 
   function ensureLayers() {
     let root = svg.querySelector('g.ff-scene');
@@ -135,9 +135,40 @@ function makeRenderer(svg) {
       if (!g) g = svgEl('g', { 'data-layer': name }, root);
       R.layers[name] = g;
     });
+    /* 网格 pattern 与 defs 同步重建 */
+    buildDefs();
+    buildGrid();
+
     /* 层级顺序固定(防止 Vue 模板顺序变动) */
-    const order = ['underlay', 'edges', 'junctions', 'efield', 'particles', 'readings', 'symbol-text', 'overlay'];
+    const order = ['grid', 'underlay', 'edges', 'junctions', 'efield', 'particles', 'readings', 'symbol-text', 'overlay'];
     order.forEach((name) => root.appendChild(R.layers[name]));
+  }
+
+  /* 网格:userSpaceOnUse pattern,跟随 viewBox 平移缩放,与吸附格点严格对齐 */
+  function buildGrid() {
+    const defs = R.layers.defs;
+    const size = GRID;
+    const major = size * 5;
+    const pat = svgEl('pattern', {
+      id: 'ff-grid', width: major, height: major, patternUnits: 'userSpaceOnUse'
+    }, defs);
+    let d = '';
+    for (let i = 0; i < 5; i++) {
+      d += 'M' + (i * size) + ' 0V' + major + 'M0 ' + (i * size) + 'H' + major;
+    }
+    svgEl('path', { d, fill: 'none', stroke: 'var(--grid-minor)', 'stroke-width': 1 }, pat);
+    svgEl('path', {
+      d: 'M0 0V' + major + 'M0 0H' + major,
+      fill: 'none', stroke: 'var(--grid-major)', 'stroke-width': 1.2
+    }, pat);
+
+    const layer = R.layers.grid;
+    layer.innerHTML = '';
+    /* 用超大矩形铺满可视世界(视图可平移,取足够大的范围) */
+    svgEl('rect', {
+      x: -8000, y: -8000, width: 16000, height: 16000,
+      fill: 'url(#ff-grid)', 'pointer-events': 'none'
+    }, layer);
   }
 
   function buildDefs() {
@@ -414,17 +445,27 @@ function makeRenderer(svg) {
         });
       }
       if (e.type === T.MOTOR) {
-        /* 转速 ∝ 端电压;有有限电阻时优先用电流。rpm 正负 = 转向 */
+        /* 转速 ∝ 端电压。若将来求解器给电动机有限电阻,则优先用带符号的
+         * 电流(转向随电流反向);当前 solver 把电动机按开路处理,于是退回
+         * 端电压驱动 —— 否则新元件在画布上永远是死的。 */
         let drive = 0;
-        if (U != null) drive = U;
-        if (I != null && Math.abs(I) > 1e-6) drive = Math.sign(I) * Math.abs(I) * solver.rOf(e);
+        const r = solver.rOf(e, R.model.wireR);
+        if (I != null && Math.abs(I) > 1e-6 && isFinite(r)) {
+          drive = Math.sign(I) * Math.abs(I) * r;
+        } else if (U != null) {
+          drive = U;
+        }
         const rpm = clamp(drive * 320, -2600, 2600);
         symbols.setSpin(rec.hooks.rotor, rpm);
       }
       if (e.type === T.BELL) {
         let drive = 0;
-        if (U != null) drive = Math.abs(U);
-        if (I != null && Math.abs(I) > 1e-6) drive = Math.abs(I) * solver.rOf(e);
+        const r = solver.rOf(e, R.model.wireR);
+        if (I != null && Math.abs(I) > 1e-6 && isFinite(r)) {
+          drive = Math.abs(I) * r;
+        } else if (U != null) {
+          drive = Math.abs(U);
+        }
         symbols.setRing(rec.hooks.bell, clamp(drive / 3, 0, 1));
       }
 
