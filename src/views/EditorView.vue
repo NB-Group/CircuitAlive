@@ -12,6 +12,8 @@ import { PALETTE, symbols } from '../core/symbols.js'
 import { decodeCircuit } from '../core/share.js'
 import CircuitCanvas from '../components/CircuitCanvas.vue'
 import InspectorPopover from '../components/InspectorPopover.vue'
+import SaveDialog from '../components/SaveDialog.vue'
+import { useLibrary } from '../composables/useLibrary.js'
 import { presets } from '../data/presets.js'
 import { getProblem } from '../data/problems.js'
 import MathText from '../components/MathText.vue'
@@ -39,6 +41,66 @@ const inspectedKey = computed(() => selectedKey.value)
 const problem = ref(null)
 const showAnswer = ref(false)
 
+/* ---------- 作品库 ---------- */
+const lib = useLibrary()
+const libItemId = ref(null)      /* 当前电路在作品库里的 id;null = 还没保存过 */
+const showSave = ref(false)
+const saveError = ref('')
+const saveTip = ref('')
+let saveTipTimer = 0
+
+const libItem = computed(() => (libItemId.value ? lib.get(libItemId.value) : null))
+const currentName = computed(() => (libItem.value ? libItem.value.name : ''))
+
+function openSave() {
+  if (!lib.isAvailable()) {
+    showTip('当前浏览器不允许本地存储,无法保存。')
+    return
+  }
+  if (!model.value.edges.size) {
+    showTip('画布是空的,先放几个元件再保存。')
+    return
+  }
+  saveError.value = ''
+  showSave.value = true
+}
+
+function closeSave() {
+  showSave.value = false
+  saveError.value = ''
+}
+
+function doSave(name) {
+  const data = model.value.serialize()
+  const res = libItemId.value
+    ? lib.update(libItemId.value, { name, data })
+    : lib.save({ name, data })
+  if (!res.ok) {
+    saveError.value = res.message
+    return
+  }
+  libItemId.value = res.item.id
+  closeSave()
+  showTip('已保存到作品库。')
+}
+
+function doSaveAsNew(name) {
+  const res = lib.save({ name, data: model.value.serialize() })
+  if (!res.ok) {
+    saveError.value = res.message
+    return
+  }
+  libItemId.value = res.item.id
+  closeSave()
+  showTip('已另存为新电路。')
+}
+
+function showTip(text) {
+  saveTip.value = text
+  if (saveTipTimer) clearTimeout(saveTipTimer)
+  saveTipTimer = setTimeout(() => { saveTip.value = '' }, 2400)
+}
+
 function resolve() {
   const sol = solver.solve(model.value.list(), { wireR: model.value.wireR })
   solution.value = sol
@@ -47,23 +109,39 @@ function resolve() {
 function onChanged() { resolve() }
 
 onMounted(() => {
-  /* 分享链接优先,其次预置,最后空白 */
+  /* 作品库条目优先,其次分享链接,其次预置,最后空白 */
+  const libId = route.query.lib
+  let loadedFromLib = false
+  if (libId) {
+    const item = lib.get(String(libId))
+    if (item) {
+      libItemId.value = item.id
+      try {
+        model.value.restore(item.data)
+        loadedFromLib = true
+      } catch (e) {
+        console.warn('作品库电路载入失败', e)
+      }
+    }
+  }
+
   const s = route.query.s
   if (s) {
     try {
       const data = decodeCircuit(s)
       model.value.restore({ v: 1, wireR: data.wireR, edges: data.edges })
+      libItemId.value = null
     } catch (e) {
       console.warn('分享链接解析失败', e)
     }
-  } else if (props.id) {
+  } else if (!loadedFromLib && props.id) {
     /* 题库题目:载入题干电路 */
     const prob = getProblem(props.id)
     if (prob) {
       problem.value = prob
       model.value.loadPreset(prob.circuit)
     }
-  } else if (route.query.preset) {
+  } else if (!loadedFromLib && route.query.preset) {
     const p = presets.find(x => x.id === route.query.preset)
     if (p) model.value.loadPreset(p.tuples)
   }
@@ -74,13 +152,18 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   bus.off('changed', onChanged)
+  if (saveTipTimer) clearTimeout(saveTipTimer)
 })
 
 /* 元件栏图标:把 symbols 的 SVG 转成 HTML 字符串 */
-const palette = [{ type: 'select', name: '选择', icon: '' }].concat(PALETTE.map(it => ({
+const SELECT_ICON = '<svg width="56" height="36" viewBox="-30 -22 60 44" aria-hidden="true">' +
+  '<path d="M -3 -10 L 9 2 L 2.5 3.2 L 6.5 11 L 3.4 12.4 L -0.6 4.6 L -5.6 9.6 Z" ' +
+  'fill="currentColor" opacity="0.85" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>'
+
+const palette = [{ type: 'select', name: '选择', icon: SELECT_ICON }].concat(PALETTE.map(it => ({
   ...it,
   icon: (() => {
-    if (it.type === 'select') return '<svg width="56" height="36" viewBox="-30 -22 60 44"><path d="M -4 -9 L 8 3 L 1 4 L 5 11 L 2 12 L -2 5 L -7 10 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'
+    if (it.type === 'select') return SELECT_ICON
     const svg = symbols.paletteIcon(it.type, it.props)
     return svg.outerHTML
   })()
@@ -97,7 +180,9 @@ function setTool(t, p) {
   armed.value = p ? { type: t, props: p } : null
 }
 
+/* 只有显式选中才打开检查器;放置元件不打开 */
 function onSelect(key) { selectedKey.value = key }
+function onPlaced() { selectedKey.value = null }
 
 function toggle(layer) {
   opts.value = { ...opts.value, [layer]: !opts.value[layer] }
@@ -123,6 +208,8 @@ const stateText = computed(() => {
         <button class="ff-btn ghost" :class="{ on: opts.efield }" @click="toggle('efield')">电场</button>
       </nav>
       <span class="state" :class="solution?.status">{{ stateText }}</span>
+      <router-link to="/library" class="ff-btn ghost">作品库</router-link>
+      <button class="ff-btn" @click="openSave">保存</button>
       <button class="ff-btn ghost" @click="emit('toggle-theme')">{{ theme === 'dark' ? '浅色' : '深色' }}</button>
     </header>
 
@@ -146,9 +233,20 @@ const stateText = computed(() => {
         <div class="prob-head">
           <span class="ff-h">题目</span>
           <span class="prob-title">{{ problem.title }}</span>
+          <span class="prob-src">{{ problem.source }}<template v-if="problem.year"> · {{ problem.year }}</template></span>
           <button class="ff-btn ghost" @click="showAnswer = !showAnswer">{{ showAnswer ? '收起解析' : '查看解析' }}</button>
         </div>
         <MathText class="prob-text" :text="problem.statement" />
+        <div v-if="problem.type === '伏安法'" class="va-guide">
+          <div class="va-title">伏安法测电阻 · 实验要点</div>
+          <MathText text="用电压表测出电阻两端的电压 $U$,用电流表测出通过它的电流 $I$,由 $R = \\frac{U}{I}$ 求出阻值。" />
+          <ul class="va-list">
+            <li>电流表<b>串联</b>接入,电压表<b>并联</b>在被测电阻两端。</li>
+            <li>滑动变阻器串联在电路中,用来改变待测电阻两端的电压,多次测量取平均。</li>
+            <li>连接电路时开关断开,滑动变阻器调到最大阻值。</li>
+            <li>电压表与电流表都有内阻,读数会有系统误差;初中阶段按理想表处理。</li>
+          </ul>
+        </div>
         <div v-if="showAnswer" class="prob-answer">
           <MathText :text="problem.answer" />
           <MathText :text="problem.solution" />
@@ -162,6 +260,7 @@ const stateText = computed(() => {
         :tool="tool"
         :armed="armed"
         @select="onSelect"
+        @placed="onPlaced"
         @changed="resolve"
         @escape="setTool('select')"
       />
@@ -175,6 +274,20 @@ const stateText = computed(() => {
         @changed="resolve"
       />
     </main>
+
+    <SaveDialog
+      v-if="showSave"
+      :initial-name="currentName"
+      :has-item="!!libItem"
+      :error="saveError"
+      @close="closeSave"
+      @save="doSave"
+      @save-as-new="doSaveAsNew"
+    />
+
+    <transition name="ff-editor-tip">
+      <div v-if="saveTip" class="editor-tip" role="status">{{ saveTip }}</div>
+    </transition>
   </div>
 </template>
 
@@ -223,6 +336,32 @@ const stateText = computed(() => {
 .prob-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .prob-title { font-family: var(--serif); font-weight: 700; font-size: 14px; }
 .prob-head .ff-btn { margin-left: auto; }
+.prob-src { font-size: 11px; color: var(--ink-faint); font-family: var(--mono); }
 .prob-text { font-size: 13px; line-height: 1.9; }
+.va-guide {
+  margin-top: 10px; padding: 8px 12px;
+  background: var(--paper-inset); border-left: 2px solid var(--vermilion);
+  font-size: 12.5px; line-height: 1.9; color: var(--ink-soft);
+}
+.va-title { font-family: var(--serif); font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+.va-list { margin: 4px 0 0 18px; }
+.va-list li { margin: 2px 0; }
 .prob-answer { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--hairline); font-size: 13px; line-height: 1.9; }
+
+/* 保存/提示浮条:与作品库的 toast 同款,固定在画布下方 */
+.editor-tip {
+  position: fixed; left: 50%; bottom: 30px; z-index: 80;
+  transform: translateX(-50%);
+  padding: 7px 16px;
+  border: 1px solid var(--hairline); border-radius: 999px;
+  background: var(--paper-panel); box-shadow: var(--shadow-float);
+  color: var(--ink); font-size: 12.5px; pointer-events: none;
+}
+.ff-editor-tip-enter-active { transition: opacity var(--dur-mid) var(--ease-out), transform var(--dur-mid) var(--ease-spring); }
+.ff-editor-tip-leave-active { transition: opacity var(--dur-fast) ease, transform var(--dur-fast) ease; }
+.ff-editor-tip-enter-from, .ff-editor-tip-leave-to { opacity: 0; transform: translateX(-50%) translateY(8px); }
+
+@media (max-width: 900px) {
+  .layers { display: none; }
+}
 </style>

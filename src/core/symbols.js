@@ -70,9 +70,8 @@ BUILDERS[T.RESISTOR] = function (g) {
   el('rect', { x: -11, y: -6.5, width: 22, height: 13, class: 'fill-paper' }, g);
 };
 
-/* 小灯泡:圆圈内打叉 + 暖色灯丝泛光 + 白热核 + 洒在纸面上的光。
- * 亮度连续受控;glow 组置于最上层,暖光会轻微染过墨线,像真的在发光。
- * 闪烁由 CSS(.lamp-flicker)做 3–5% 的随机感振幅,不抢亮度控制的戏。 */
+/* 小灯泡:圆圈内打叉 + 暖色泛光 + 白热核。
+ * 亮度连续受控,稳定通电时不闪烁(白炽灯不该抖)。 */
 BUILDERS[T.LAMP] = function (g) {
   line(g, -HALF, 0, -8.5, 0);
   line(g, 8.5, 0, HALF, 0);
@@ -82,26 +81,20 @@ BUILDERS[T.LAMP] = function (g) {
 
   const glow = el('g', { class: 'lamp-glow', opacity: 0 }, g);
   glow.setAttribute('data-hook', 'glow');
-  const flick = el('g', { class: 'lamp-flicker' }, glow);
 
-  /* 洒在周围纸面上的暖光(大而淡) */
-  el('circle', {
-    cx: 0, cy: 0, r: 22, fill: 'url(#lamp-cast)',
-    'data-part': 'cast', opacity: 0
-  }, flick);
-  /* 泛光 */
+  /* 泛光(紧贴灯泡的暖色光晕,不做大范围纸面投影) */
   el('circle', {
     cx: 0, cy: 0, r: 10.5, fill: '#ffca66', filter: 'url(#lamp-bloom)',
     'data-part': 'bloom', opacity: 0
-  }, flick);
+  }, glow);
   /* 白热核 */
   el('circle', {
     cx: 0, cy: 0, r: 3, fill: 'url(#lamp-core)',
     'data-part': 'core', opacity: 0
-  }, flick);
+  }, glow);
   /* 灯丝(与墨色叉线重合的暖色发光副本) */
-  const f1 = line(flick, -6, -6, 6, 6, 'lamp-filament');
-  const f2 = line(flick, -6, 6, 6, -6, 'lamp-filament');
+  const f1 = line(glow, -6, -6, 6, 6, 'lamp-filament');
+  const f2 = line(glow, -6, 6, 6, -6, 'lamp-filament');
   f1.setAttribute('data-part', 'filament');
   f2.setAttribute('data-part', 'filament');
 };
@@ -217,18 +210,13 @@ function setGlow(hookEl, k) {
   hookEl.setAttribute('opacity', Math.min(1, k * 1.05).toFixed(3));
   const bloom = hookEl.querySelector('[data-part="bloom"]');
   const core = hookEl.querySelector('[data-part="core"]');
-  const cast = hookEl.querySelector('[data-part="cast"]');
   if (bloom) {
-    bloom.setAttribute('r', (8.5 + 5.5 * k).toFixed(1));
-    bloom.setAttribute('opacity', (k * 0.8).toFixed(3));
+    bloom.setAttribute('r', (8.2 + 3.4 * k).toFixed(1));
+    bloom.setAttribute('opacity', (k * 0.62).toFixed(3));
   }
   if (core) {
     core.setAttribute('r', (2.6 + 5.2 * k).toFixed(1));
     core.setAttribute('opacity', Math.min(1, k * 1.4).toFixed(3));
-  }
-  if (cast) {
-    cast.setAttribute('r', (18 + 20 * k).toFixed(1));
-    cast.setAttribute('opacity', (k * 0.24).toFixed(3));
   }
   const filaments = hookEl.querySelectorAll('[data-part="filament"]');
   for (let i = 0; i < filaments.length; i++) {
@@ -305,8 +293,9 @@ export const symbols = {
       class: 'sym',
       fill: 'none',
       stroke: 'currentColor',
-      'stroke-width': 2,
-      'stroke-linecap': 'round'
+      'stroke-width': 1.5,
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round'
     }, svg);
     (BUILDERS[type] || BUILDERS[T.WIRE])(g, 0, props || {}, true);
     /* fill-paper 的圆盘在图标里改为透明描边,避免无 CSS 时变实心 */

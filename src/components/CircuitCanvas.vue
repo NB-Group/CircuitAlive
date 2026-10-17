@@ -207,8 +207,9 @@ function placeAtEdge(world) {
   const ends = R.keyEnds(gkey)
   const res = props.model.place(props.tool, ends[0], ends[1], props.armed ? props.armed.props : {})
   if (res) {
-    selectKey(gkey)
-    emit('edge-click', gkey)
+    /* 放置只选中,不自动打开检查器:检查器由用户主动选中(单击)才出现 */
+    selectKey(null)
+    emit('placed', gkey)
   }
 }
 
@@ -233,7 +234,6 @@ function startLongPress(ev, key) {
     }
     clearGhost()
     selectKey(key)
-    emit('edge-click', key)
     hint('元件检查器')
     I.suppressUp = true
   }, 450)
@@ -302,8 +302,9 @@ function onDown(ev) {
     return
   }
   if (ev.button !== 0) return
-  /* 触摸/笔:先布好长按计时器(命中任意边即可) */
-  if (touch && hitKey) startLongPress(ev, hitKey)
+  /* 触摸/笔长按 = 打开检查器:仅在选择工具下生效,
+     放置/橡皮/导线工具里长按不应弹面板 */
+  if (touch && hitKey && props.tool === 'select') startLongPress(ev, hitKey)
 
   /* 点开关符号中部 = 开合,与当前工具无关(橡皮除外) */
   if (hit && hit.type === T.SWITCH && props.tool !== 'eraser') {
@@ -314,19 +315,23 @@ function onDown(ev) {
         capture(ev)
         return
       }
-      selectKey(hitKey)
       props.model.toggleSwitch(hitKey)
       hint(hit.props.closed ? '开关闭合 — 电路接通' : '开关断开 — 电路断开')
       return
     }
   }
 
-  /* 抓滑变滑轨 = 直接拖拽调阻值(捏合会被 cancelDrag 回滚) */
-  if (hit && hit.type === T.RHEOSTAT && wiperGrab(hit, world)) {
+  /* 滑变:点符号 = 选中并弹出滑条;拖滑轨 = 直接调阻值;滚轮 = 微调 */
+  if (hit && hit.type === T.RHEOSTAT) {
     selectKey(hitKey)
-    I.drag = { mode: 'wiper', edge: hit, key: hitKey, snap: props.model.serializeStr() }
-    hint('拖动滑片调阻值')
-    capture(ev)
+    if (wiperGrab(hit, world)) {
+      I.drag = { mode: 'wiper', edge: hit, key: hitKey, snap: props.model.serializeStr(), moved: false }
+      hint('拖动滑片调阻值')
+      capture(ev)
+      return
+    }
+    /* 点符号本体(非滑轨):打开浮出滑条 */
+    emit('edge-click', hitKey)
     return
   }
 
@@ -433,6 +438,7 @@ function onMove(ev) {
   if (I.drag && I.drag.mode === 'wiper') {
     if (!props.model.edges.get(I.drag.key)) { I.drag = null; return }
     const loc = rheostatLocal(I.drag.edge, world)
+    I.drag.moved = true
     I.drag.edge.props.wiper = clamp((loc.lx + 13) / 26, 0, 1)
     bus.emit('changed')
     return
@@ -507,6 +513,7 @@ function onUp(ev) {
   }
 
   if (d.mode === 'wiper') {
+    if (!d.moved) emit('edge-click', d.key)
     props.model.commit(d.snap)
     hint('滑片位置: ' + fmt(solver.rOf(d.edge, props.model.wireR), 'Ω'))
     return
@@ -566,6 +573,23 @@ function onDblClick(ev) {
 function onWheel(ev) {
   if (!R) return
   ev.preventDefault()
+
+  /* 悬停在滑动变阻器上:滚轮调滑片(上滚增大,下滚减小)。
+     这是"符合直觉的交互方式"之一 —— 和缩放不冲突,因为焦点明确。 */
+  const world = R.screenToWorld(ev.clientX, ev.clientY)
+  const hitKey = R.hitEdge(world)
+  const hit = hitKey ? props.model.edges.get(hitKey) : null
+  if (hit && hit.type === T.RHEOSTAT) {
+    const step = ev.deltaY < 0 ? 0.04 : -0.04
+    const next = clamp((hit.props.wiper == null ? 1 : hit.props.wiper) + step, 0, 1)
+    if (next !== hit.props.wiper) {
+      hit.props.wiper = next
+      bus.emit('changed')
+      hint('滑片 ' + Math.round(next * 100) + '%  ·  ' + fmt(solver.rOf(hit, props.model.wireR), 'Ω'))
+    }
+    return
+  }
+
   R.zoomAt(ev.clientX, ev.clientY, ev.deltaY < 0 ? 1.15 : 1 / 1.15)
   emitViewport()
 }

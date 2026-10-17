@@ -135,10 +135,6 @@ function makeRenderer(svg) {
       if (!g) g = svgEl('g', { 'data-layer': name }, root);
       R.layers[name] = g;
     });
-    /* 网格 pattern 与 defs 同步重建 */
-    buildDefs();
-    buildGrid();
-
     /* 层级顺序固定(防止 Vue 模板顺序变动) */
     const order = ['grid', 'underlay', 'edges', 'junctions', 'efield', 'particles', 'readings', 'symbol-text', 'overlay'];
     order.forEach((name) => root.appendChild(R.layers[name]));
@@ -156,10 +152,11 @@ function makeRenderer(svg) {
     for (let i = 0; i < 5; i++) {
       d += 'M' + (i * size) + ' 0V' + major + 'M0 ' + (i * size) + 'H' + major;
     }
-    svgEl('path', { d, fill: 'none', stroke: 'var(--grid-minor)', 'stroke-width': 1 }, pat);
+    /* SVG 属性里不能用 var(),网格线用 class 交给 CSS 上色(深浅主题都能跟) */
+    svgEl('path', { d, fill: 'none', class: 'ff-grid-minor', 'stroke-width': 1 }, pat);
     svgEl('path', {
       d: 'M0 0V' + major + 'M0 0H' + major,
-      fill: 'none', stroke: 'var(--grid-major)', 'stroke-width': 1.2
+      fill: 'none', class: 'ff-grid-major', 'stroke-width': 1.2
     }, pat);
 
     const layer = R.layers.grid;
@@ -283,6 +280,8 @@ function makeRenderer(svg) {
       if (!seen.has(id)) removeEdgeRec(id);
     });
 
+    /* 记录本轮 id 集合,下一轮据此判断哪些是新增边 */
+    R.prevIds = seen;
     buildJunctions();
     applySelection();
     applyProbeMarker();
@@ -315,6 +314,14 @@ function makeRenderer(svg) {
       'data-edge-key': e.key
     }, R.layers.edges);
     group.appendChild(sym);
+
+    /* 放置动画:新元件弹入(仅首次加入时) */
+    /* 只有"这一轮新出现"的边才播放弹入动画:
+       用上一轮的 id 集合做差集,避免每次重绘都闪一下 */
+    if (!R.prevIds || !R.prevIds.has(e.id)) {
+      group.classList.add('just-placed');
+      group.addEventListener('animationend', () => group.classList.remove('just-placed'), { once: true });
+    }
 
     /* 命中区(透明粗线,捕捉指针事件);只传 key,事件时再查当前边,避免 undo 后引用陈旧 */
     const hit = svgEl('line', {
@@ -488,7 +495,7 @@ function makeRenderer(svg) {
         svgEl('stop', { offset: '100%', 'stop-color': phiColor(phiB) }, lg);
         svgEl('line', {
           x1: w2(e.a[0]), y1: w2(e.a[1]), x2: w2(e.b[0]), y2: w2(e.b[1]),
-          stroke: 'url(#' + gid + ')', 'stroke-width': 9, 'stroke-linecap': 'butt', opacity: 0.92
+          stroke: 'url(#' + gid + ')', 'stroke-width': 9, 'stroke-linecap': 'butt'
         }, R.layers.underlay);
       }
 
@@ -619,10 +626,18 @@ function makeRenderer(svg) {
       const ax = w2(e.a[0]), ay = w2(e.a[1]), bx = w2(e.b[0]), by = w2(e.b[1]);
       const advance = p.speed * ramp * dt / G;
       for (let i = 0; i < p.count; i++) {
-        p.phase[i] = (p.phase[i] + advance) % 1;
+        /* 相位沿电流方向推进,越过端点后从另一端重新进入。
+           用带符号的模运算,避免反向时 phase 在 0/1 之间来回跳
+           (那会让粒子在两端闪烁)。 */
+        p.phase[i] += advance;
+        if (p.phase[i] >= 1) p.phase[i] -= 1;
+        else if (p.phase[i] < 0) p.phase[i] += 1;
         const t = p.dir > 0 ? p.phase[i] : 1 - p.phase[i];
         p.els[i].setAttribute('cx', lerp(ax, bx, t));
         p.els[i].setAttribute('cy', lerp(ay, by, t));
+        /* 端点处淡出淡入,避免粒子瞬移造成闪烁 */
+        const edgeFade = Math.min(1, Math.min(t, 1 - t) / 0.12);
+        p.els[i].setAttribute('opacity', edgeFade.toFixed(3));
       }
     });
 
@@ -754,6 +769,7 @@ function makeRenderer(svg) {
 
   ensureLayers();
   buildDefs();
+  buildGrid();      /* 必须在 buildDefs 之后:pattern 定义在 defs 里 */
   applyView();
 
   let ro = null;

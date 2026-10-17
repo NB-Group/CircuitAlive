@@ -4,10 +4,15 @@
  * 视觉基调:方格纸 + 衬线标题 + 细线分隔 + 朱红点缀。
  * 动画全部走 tokens.css 的 ff-fade-up;卡片错峰靠 --i 自定义属性。
  * 主题由 App.vue 注入(prop theme / emit toggle-theme),本视图不自己存状态。 */
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { problems, problemTypes } from '../data/problems.js'
 import MathText from '../components/MathText.vue'
+import { Model } from '../core/model.js'
+import { solver } from '../core/solver.js'
+import { createRenderer } from '../core/render.js'
+import { presets } from '../data/presets.js'
+import { bus } from '../core/util.js'
 
 const props = defineProps({
   theme: { type: String, default: 'light' }
@@ -30,6 +35,59 @@ function setFilter(t) { active.value = t }
 
 const DIFF_NAME = { 1: '基础', 2: '中等', 3: '提高' }
 const diffLabel = (d) => DIFF_NAME[d] || ''
+
+/* ---------- 首页演示:真实引擎 ---------- */
+const heroStage = ref(null)
+let heroRenderer = null
+let heroModel = null
+let heroRaf = 0
+
+function mountHero() {
+  const host = heroStage.value
+  if (!host) return
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('width', '100%')
+  svg.setAttribute('height', '100%')
+  svg.setAttribute('viewBox', '0 0 380 250')
+  svg.setAttribute('aria-label', '串联电路演示:电流粒子沿导线运动')
+  host.appendChild(svg)
+
+  heroModel = new Model()
+  heroModel.loadPreset(presets[0].tuples)   /* 串联:电池 + 开关 + 两灯 */
+  /* 演示用:开关闭合、去掉灯泡的暗态 */
+  const sw = heroModel.list().find(e => e.type === 'switch')
+  if (sw) sw.props.closed = true
+
+  heroRenderer = createRenderer(svg)
+  heroRenderer.setModel(heroModel)
+  heroRenderer.setOpts({ particles: true, electrons: false, potential: false, phiLabels: false, efield: false })
+  solveHero()
+  /* 等布局完成再适配视图:appendChild 之后立刻读 getBoundingClientRect 会得到 0 */
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (heroRenderer) heroRenderer.fitView()
+    })
+  })
+  bus.on('changed', solveHero)
+}
+
+function solveHero() {
+  if (!heroRenderer || !heroModel) return
+  const sol = solver.solve(heroModel.list(), { wireR: heroModel.wireR })
+  heroRenderer.setSolution(sol)
+  heroRenderer.syncStructure()
+  heroRenderer.syncSolution()
+}
+
+onMounted(() => {
+  mountHero()
+})
+
+onBeforeUnmount(() => {
+  bus.off('changed', solveHero)
+  if (heroRenderer && heroRenderer.destroy) heroRenderer.destroy()
+  heroRenderer = null
+})
 
 /* ---------- 滚动到题目库 ---------- */
 const libraryEl = ref(null)
@@ -73,6 +131,7 @@ const presetCards = [
 
         <div class="nav-right">
           <span class="nav-note">电学实验台</span>
+          <router-link to="/library" class="ff-btn ghost library-link">作品库</router-link>
           <button
             type="button"
             class="ff-btn ghost theme-btn"
@@ -130,50 +189,8 @@ const presetCards = [
               <span class="stage-read">I = 0.30 A</span>
             </figcaption>
 
-            <svg
-              class="circuit-art"
-              viewBox="0 0 380 250"
-              role="img"
-              aria-label="串联电路示意:电池、开关、小灯泡和定值电阻组成回路,电流粒子沿导线运动"
-            >
-              <!-- 导线 -->
-              <path
-                class="wire"
-                d="M46 62 H150 M190 62 H334 M334 62 V104 M334 140 V196 M334 196 H246 M206 196 H46 M46 196 V134 M46 126 V62"
-              />
-
-              <!-- 电流粒子(在符号下层,经过元件时被遮住) -->
-              <circle class="spark" cx="0" cy="0" r="3.2" style="animation-delay: 0s" />
-              <circle class="spark" cx="0" cy="0" r="3.2" style="animation-delay: -1.4s" />
-              <circle class="spark" cx="0" cy="0" r="3.2" style="animation-delay: -2.8s" />
-              <circle class="spark" cx="0" cy="0" r="3.2" style="animation-delay: -4.2s" />
-              <circle class="spark" cx="0" cy="0" r="3.2" style="animation-delay: -5.6s" />
-
-              <!-- 灯泡光晕 -->
-              <circle class="lamp-halo" cx="170" cy="62" r="27" />
-
-              <!-- 电池:长线为正极 -->
-              <line class="sym heavy" x1="35" y1="126" x2="57" y2="126" />
-              <line class="sym heavy" x1="40" y1="134" x2="52" y2="134" />
-              <text class="plus" x="61" y="123">+</text>
-
-              <!-- 开关(闭合) -->
-              <circle class="contact" cx="334" cy="104" r="2.7" />
-              <circle class="contact" cx="334" cy="140" r="2.7" />
-              <line class="sym lever" x1="334" y1="140" x2="334" y2="105" />
-
-              <!-- 小灯泡 -->
-              <circle class="body" cx="170" cy="62" r="15" />
-              <line class="sym thin" x1="159.5" y1="51.5" x2="180.5" y2="72.5" />
-              <line class="sym thin" x1="159.5" y1="72.5" x2="180.5" y2="51.5" />
-
-              <!-- 定值电阻 -->
-              <rect class="body" x="206" y="188" width="40" height="16" />
-
-              <!-- 标注 -->
-              <text class="note" x="170" y="104">L</text>
-              <text class="note" x="226" y="226">R</text>
-            </svg>
+            <!-- 真实引擎渲染的演示回路:与编辑器同一套求解器/符号/粒子 -->
+            <div ref="heroStage" class="circuit-art hero-engine"></div>
 
             <div class="stage-foot">
               <span>6 V</span>
@@ -220,7 +237,7 @@ const presetCards = [
           >
             <div class="card-top">
               <span class="card-type">{{ p.type }}</span>
-              <span class="card-year ff-num">{{ p.year }}</span>
+              <span class="card-year ff-num">{{ p.source }}</span>
             </div>
 
             <h3 class="card-title">{{ p.title }}</h3>
@@ -423,6 +440,11 @@ const presetCards = [
   padding: 5px 10px;
 }
 
+.library-link {
+  font-size: 12.5px;
+  padding: 5px 10px;
+}
+
 .theme-icon {
   width: 14px;
   height: 14px;
@@ -599,6 +621,14 @@ const presetCards = [
   height: auto;
   padding: 6px 10px 0;
 }
+
+/* 真实引擎渲染的演示区:固定高度,内部 SVG 铺满 */
+.hero-engine {
+  height: 250px;
+  padding: 0;
+  background: transparent;
+}
+.hero-engine > svg { display: block; width: 100%; height: 100%; }
 
 .stage-foot {
   display: flex;
@@ -829,7 +859,7 @@ const presetCards = [
   color: var(--vermilion);
 }
 
-.card-year {
+.card-source {
   font-size: 10.5px;
   color: var(--ink-faint);
 }

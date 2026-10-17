@@ -156,28 +156,6 @@
   opacity: 0;
 }
 
-/* 3–5% 振幅的不规则闪烁;整体 opacity 由 setGlow 控制,闪烁只乘在组内 */
-.ff-canvas .lamp-flicker {
-  animation: ff-lamp-flicker 2.6s steps(1, end) infinite;
-  transform-origin: 0 0;
-}
-
-@keyframes ff-lamp-flicker {
-  0%   { opacity: 1; }
-  7%   { opacity: 0.96; }
-  9%   { opacity: 1; }
-  23%  { opacity: 0.965; }
-  25%  { opacity: 1; }
-  41%  { opacity: 0.975; }
-  43%  { opacity: 1; }
-  58%  { opacity: 0.955; }
-  61%  { opacity: 1; }
-  74%  { opacity: 0.97; }
-  77%  { opacity: 1; }
-  88%  { opacity: 0.96; }
-  91%  { opacity: 1; }
-  100% { opacity: 1; }
-}
 
 /* ============ 电动机:转子 ============ */
 
@@ -424,6 +402,25 @@
   color: var(--vermilion);
 }
 
+/* 放置动画:新元件弹入 */
+.ff-canvas .edge-group.just-placed {
+  animation: ff-place-in 260ms var(--ease-spring) both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes ff-place-in {
+  from { opacity: 0; transform: scale(0.72); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* 网格线(定义在 pattern 里,跟随世界坐标平移缩放) */
+.ff-grid-minor { stroke: var(--grid-minor); }
+.ff-grid-major { stroke: var(--grid-major); }
+
+/* 电势色带:深色下压低不透明度,避免盖住导线墨线 */
+.ff-canvas [data-layer="underlay"] { opacity: 1; }
+html[data-theme='dark'] .ff-canvas [data-layer="underlay"] { opacity: 0.55; }
+
 /* 被检查的元件:轻微抬起(缩放加在符号子组上,
    不能加在 .edge-group 上 —— 那会覆盖它的 translate/rotate 定位) */
 .ff-canvas .edge-group.inspected .sym {
@@ -438,5 +435,4 @@
   .ff-inspector,
   .ff-insp-scrim { animation: none; }
   .ff-canvas .bell-shake { animation: none; }
-  .ff-canvas .lamp-flicker { animation: none; }
 }
