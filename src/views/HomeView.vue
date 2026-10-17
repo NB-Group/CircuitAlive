@@ -1081,6 +1081,10 @@ const presetCards = [
     max-width: 520px;
   }
 
+  .stage-wrap::after {
+    inset: 10px -6px -8px 10px;
+  }
+
   .presets {
     grid-template-columns: minmax(0, 1fr);
   }

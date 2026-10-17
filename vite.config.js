@@ -3,12 +3,10 @@ import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
-  plugins: [vue({
-    script: { refTransform: false }
-  })],
+  /* GitHub Pages 项目页部署在 /FieldFlow/ 下,资源路径需要相对化 */
+  base: './',
+  plugins: [vue()],
   resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
-    }
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) }
   }
 })
