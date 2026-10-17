@@ -17,7 +17,6 @@ import { T, GRID, clamp, edgeKey, fmt, bus } from '../core/util.js'
 import { symbols } from '../core/symbols.js'
 import { solver } from '../core/solver.js'
 import { createRenderer } from '../core/render.js'
-import '../styles/canvas.css'
 
 const props = defineProps({
   model: { type: Object, required: true },
@@ -99,7 +98,10 @@ function onModelChanged() {
   /* 首次拿到非空电路(父层 mounted 里载入预置)时补一次适配视图 */
   if (!fittedNonEmpty && props.model.edges.size) {
     fittedNonEmpty = true
-    if (R) { R.fitView(); emitViewport() }
+    /* 等一帧:题目浮层和画布在同一轮里出现,此刻量不到它的高度 */
+    requestAnimationFrame(() => {
+      if (R) { R.fitView({ topInset: topInset() }); emitViewport() }
+    })
   }
   /* 父层在同一轮事件里会重算 solution;等它落到 prop 上再画解层。
      若父层没有重算(同引用),这里补一次,避免读数停在旧值。 */
@@ -668,6 +670,19 @@ function setInspected(key) {
   if (g) g.classList.add('inspected')
 }
 
+/* 顶部被浮层遮住的高度:题目面板是 absolute 覆盖在画布上的,
+   适配视图时要把它扣掉,否则电路会被顶到面板底下。 */
+function topInset() {
+  const el = svgEl.value
+  if (!el) return 0
+  const host = el.closest('.body')
+  const strip = host && host.querySelector('.problem-strip')
+  if (!strip) return 0
+  const a = strip.getBoundingClientRect()
+  const b = el.getBoundingClientRect()
+  return Math.max(0, a.bottom - b.top + 8)
+}
+
 /* ---------- 生命周期 ---------- */
 
 onMounted(async () => {
@@ -682,7 +697,7 @@ onMounted(async () => {
 
   if (!fitted) {
     fitted = true
-    R.fitView()
+    R.fitView({ topInset: topInset() })
     emitViewport()
   }
 

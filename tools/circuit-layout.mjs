@@ -104,21 +104,98 @@ export async function layoutCircuit(circuit, opts = {}) {
       .map((k, i) => ({ id: 'e' + i, sources: [k.from], targets: [k.to] }))
   }
 
-  const elk = new ELK()
-  const out = await elk.layout(graph)
-
-  /* 元件中心 → 网格坐标(翻转 y,让电流从上往下更像电路图) */
-  const pos = new Map()
-  let minX = Infinity, minY = Infinity
-  for (const c of out.children) {
-    const cx = snap(c.x + c.width / 2)
-    const cy = snap(c.y + c.height / 2)
-    pos.set(c.id, [cx, cy])
-    minX = Math.min(minX, cx)
-    minY = Math.min(minY, cy)
+  /* ---- 元件定位 ----
+     单回路(串联)按矩形环路摆:元件铺在上下两边,左右两边走导线。
+     elk 的分层算法会把串联链排成一条直线,渲染出来是一根扁长条,
+     和课本上的电路图完全不像。 */
+  const nb = new Map()
+  for (const k of conns) {
+    if (!byId.has(k.from) || !byId.has(k.to) || k.from === k.to) continue
+    /* 跨接支路(电压表)不参与主回路的形状判定 */
+    if (k.across) continue
+    if (!nb.has(k.from)) nb.set(k.from, [])
+    if (!nb.has(k.to)) nb.set(k.to, [])
+    nb.get(k.from).push(k.to)
+    nb.get(k.to).push(k.from)
   }
-  /* 平移到原点附近 */
-  for (const [id, [x, y]] of pos) pos.set(id, [x - minX, y - minY])
+  const inLoop = comps.filter(c => nb.has(c.id))
+  const isSimpleLoop = inLoop.length >= 3 &&
+    inLoop.every(c => (nb.get(c.id) || []).length === 2)
+
+  const pos = new Map()
+  const loopDir = new Map()
+  let out = null
+
+  if (circuit.positions) {
+    /* 显式定位:题目给了每个元件的网格坐标就用它。
+       并联支路 elk 会排成环形,走线绕成阶梯,不如人工摆。 */
+    for (const c of comps) {
+      const p = circuit.positions[c.id]
+      if (p) {
+        pos.set(c.id, [p[0], p[1]])
+        loopDir.set(c.id, p[2] === -1 ? -1 : 1)
+      }
+    }
+    if (pos.size !== comps.length) return null
+  } else if (isSimpleLoop && comps.length >= 3) {
+    /* 从电源出发沿回路走一圈,得到元件的物理顺序 */
+    const order = [bat.id]
+    let prev = null, cur = bat.id
+    for (let i = 0; i < inLoop.length - 1; i++) {
+      const nxt = (nb.get(cur) || []).find(x => x !== prev)
+      if (!nxt || order.includes(nxt)) break
+      order.push(nxt)
+      prev = cur
+      cur = nxt
+    }
+    /* 上下两边等长:取较多的一边做列数,少的一边留空,回路才是正的矩形。
+       元件之间隔一格,元件本体占一格,所以相邻元件中心距为 2 格。 */
+    const n = order.length
+    const top = Math.ceil(n / 2)
+    const bottom = n - top
+    const cols = Math.max(top, 1)
+    const rows = 3
+    order.forEach((id, i) => {
+      if (i < top) {
+        pos.set(id, [i * 2, 0])
+        loopDir.set(id, 1)
+      } else {
+        /* 下边从右往左排:第一个元件在最右端,电流才顺着回路走 */
+        const j = i - top
+        pos.set(id, [2 * (cols - 1 - j) + 1, rows])
+        loopDir.set(id, -1)
+      }
+    })
+    /* 不在主回路里的元件(电压表跨接)摆在被测元件外侧一行 */
+    for (const k of conns) {
+      if (!k.across || pos.has(k.to)) continue
+      const host = pos.get(k.from)
+      if (!host) continue
+      pos.set(k.to, [host[0], rows + 2])
+      loopDir.set(k.to, 1)
+    }
+  } else {
+    const elk = new ELK()
+    out = await elk.layout(graph)
+    let minX = Infinity, minY = Infinity
+    for (const c of out.children) {
+      const cx = snap(c.x + c.width / 2)
+      const cy = snap(c.y + c.height / 2)
+      pos.set(c.id, [cx, cy])
+      minX = Math.min(minX, cx)
+      minY = Math.min(minY, cy)
+    }
+    for (const [id, [x, y]] of pos) pos.set(id, [x - minX, y - minY])
+
+    /* elk 的层间距换算成格之后常常偏大(每层 3 格),
+       多元件并联会被拉成一条几十格长的扁带。
+       按坐标去重后再重新编号,把空档压掉,回路才紧凑。 */
+    const xs = [...new Set([...pos.values()].map(([x]) => x))].sort((a, b) => a - b)
+    const ys = [...new Set([...pos.values()].map(([, y]) => y))].sort((a, b) => a - b)
+    const xIdx = new Map(xs.map((v, i) => [v, i * 2]))
+    const yIdx = new Map(ys.map((v, i) => [v, i * 2]))
+    for (const [id, [x, y]] of pos) pos.set(id, [xIdx.get(x), yIdx.get(y)])
+  }
 
   /* 生成边:元件本体占一段,连接走导线 */
   const edges = []
@@ -158,9 +235,12 @@ export async function layoutCircuit(circuit, opts = {}) {
       terminals.set(c.id, { in: p, out: p })
       continue
     }
-    /* 元件本体统一朝右:p 是入端,p+1 是出端 */
-    const q = [p[0] + 1, p[1]]
-    add(t, p, q, c.id)
+    /* 元件本体默认朝右;回路布局的下边反向(入端在右、出端在左),
+       电流才会绕一圈回来。反向靠交换边两端坐标实现,符号自动转 180°。 */
+    const dir = loopDir.get(c.id) === -1 ? -1 : 1
+    const q = [p[0] + dir, p[1]]
+    if (dir === 1) add(t, p, q, c.id)
+    else add(t, q, p, c.id)
     terminals.set(c.id, { in: p, out: q })
   }
 
@@ -272,18 +352,18 @@ export async function layoutCircuit(circuit, opts = {}) {
     maxX = Math.max(maxX, a[0], b[0]); maxY = Math.max(maxY, a[1], b[1])
   })
 
-  /* elk 边的 id 与 connList 下标一一对应,用来取回 across 标记 */
+  /* 走线任务:elk 给出边的方向;回路布局没有 elk,直接用 connList。
+     跨接支路(电压表探针)通常很短,先走 —— 后走会被主干导线围死。 */
+  const routeEdges = out
+    ? out.edges || []
+    : connList.map((k, i) => ({ id: 'c' + i, sources: [k.from], targets: [k.to] }))
   const acrossOf = new Map()
-  ;(out.edges || []).forEach((e, i) => {
+  routeEdges.forEach((e, i) => {
     if (connList[i] && connList[i].across) acrossOf.set(e.id, true)
   })
+  routeEdges.sort((a, b) => (acrossOf.get(b.id) ? 1 : 0) - (acrossOf.get(a.id) ? 1 : 0))
 
-  /* 跨接支路(电压表探针)通常很短,先走:后走的话会被主干导线围死。 */
-  const elkEdges = [...(out.edges || [])].sort(
-    (a, b) => (acrossOf.get(b.id) ? 1 : 0) - (acrossOf.get(a.id) ? 1 : 0)
-  )
-
-  for (const e of elkEdges) {
+  for (const e of routeEdges) {
     const src = e.sources[0]
     const tgt = e.targets[0]
     const ta = terminals.get(src)

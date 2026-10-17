@@ -45,11 +45,15 @@ let heroRaf = 0
 function mountHero() {
   const host = heroStage.value
   if (!host) return
+  host.classList.add('ff-canvas')
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('width', '100%')
   svg.setAttribute('height', '100%')
   svg.setAttribute('viewBox', '0 0 380 250')
   svg.setAttribute('aria-label', '串联电路演示:电流粒子沿导线运动')
+  /* renderer 产出的描边全靠 canvas.css 里的 .ff-canvas 作用域变量;
+     不加这个类,SVG 画出来是一条线都没有的空框。 */
+  svg.classList.add('ff-stage')
   host.appendChild(svg)
 
   heroModel = new Model()

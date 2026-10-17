@@ -233,7 +233,10 @@ function makeRenderer(svg) {
     applyView();
   }
 
-  function fitView() {
+  /* opts.topInset:顶部被浮层遮住的高度(像素)。
+     题目浮层是 absolute 覆盖在画布上的,不扣掉这段高度,
+     适配视图会把电路顶到浮层底下看不见。 */
+  function fitView(opts) {
     const m = R.model;
     const r = svg.getBoundingClientRect();
     if (!m || !m.edges.size || r.width < 2) {
@@ -246,12 +249,18 @@ function makeRenderer(svg) {
       x0 = Math.min(x0, e.a[0], e.b[0]); x1 = Math.max(x1, e.a[0], e.b[0]);
       y0 = Math.min(y0, e.a[1], e.b[1]); y1 = Math.max(y1, e.a[1], e.b[1]);
     });
-    const pad = 2.2;
+    /* 留白按格数算:2.2 格对六格宽的小电路来说占了近一半视野,
+       元件被缩得看不清。1.2 格既留出呼吸,又不至于把电路压小。 */
+    const pad = 1.2;
     const w = (x1 - x0 + pad * 2) * G, h = (y1 - y0 + pad * 2) * G;
-    const scale = Math.max(w / r.width, h / r.height);
-    R.view.w = scale * r.width; R.view.h = scale * r.height;
+    const inset = Math.max(0, (opts && opts.topInset) || 0);
+    const availH = Math.max(60, r.height - inset);
+    const scale = Math.max(w / r.width, h / availH);
+    R.view.w = scale * r.width;
+    R.view.h = scale * r.height;
     R.view.x = ((x0 + x1) / 2) * G - R.view.w / 2;
-    R.view.y = ((y0 + y1) / 2) * G - R.view.h / 2;
+    /* 视口中心下移 inset/2 个像素,电路就落在浮层下方 */
+    R.view.y = ((y0 + y1) / 2) * G - R.view.h / 2 - (inset / 2) * (R.view.w / r.width);
     applyView();
   }
 

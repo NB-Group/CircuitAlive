@@ -402,8 +402,11 @@
   color: var(--vermilion);
 }
 
-/* 放置动画:新元件弹入 */
-.ff-canvas .edge-group.just-placed {
+/* 放置动画:新元件弹入。
+   动画必须加在 .sym 上,不能加在 .edge-group 上 ——
+   CSS 的 transform 会覆盖 SVG 的 transform 属性,
+   加在 group 上会让元件在动画期间飞到原点再弹回来。 */
+.ff-canvas .edge-group.just-placed > .sym {
   animation: ff-place-in 260ms var(--ease-spring) both;
   transform-box: fill-box;
   transform-origin: center;
