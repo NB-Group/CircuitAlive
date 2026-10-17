@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Model } from '../core/model.js'
 import { solver } from '../core/solver.js'
 import { T, bus } from '../core/util.js'
+import { PALETTE, symbols } from '../core/symbols.js'
 import { decodeCircuit } from '../core/share.js'
 import CircuitCanvas from '../components/CircuitCanvas.vue'
 import InspectorPopover from '../components/InspectorPopover.vue'
@@ -65,6 +66,20 @@ onBeforeUnmount(() => {
   bus.off('changed', onChanged)
 })
 
+/* 元件栏图标:把 symbols 的 SVG 转成 HTML 字符串 */
+const palette = PALETTE.map(it => ({
+  ...it,
+  icon: (() => {
+    const svg = symbols.paletteIcon(it.type, it.props)
+    return svg.outerHTML
+  })()
+}))
+
+function pick(item) {
+  if (item.type === 'eraser') { setTool('eraser'); return }
+  setTool(item.type, item.type === 'switch' ? { closed: false } : JSON.parse(JSON.stringify(item.props || {})))
+}
+
 function setTool(t, p) {
   tool.value = t
   armed.value = p ? { type: t, props: p } : null
@@ -101,8 +116,18 @@ const stateText = computed(() => {
 
     <main class="body">
       <aside class="palette">
-        <!-- 元件栏由 CircuitCanvas 暴露的 symbols 驱动;此处占位,由子组件填充 -->
-        <slot name="palette" />
+        <div class="pal-title">元件</div>
+        <button
+          v-for="item in palette"
+          :key="item.type"
+          class="pal-btn"
+          :class="{ active: tool === item.type || (tool === 'wire' && item.type === 'wire') }"
+          :title="item.name"
+          @click="pick(item)"
+        >
+          <span class="pal-icon" v-html="item.icon"></span>
+          <span class="pal-name">{{ item.name }}</span>
+        </button>
       </aside>
 
       <CircuitCanvas
@@ -147,5 +172,19 @@ const stateText = computed(() => {
 .state.open { border-color: var(--amber); color: var(--amber); }
 
 .body { flex: 1; display: flex; min-height: 0; position: relative; }
-.palette { width: 96px; flex: none; background: var(--paper-panel); border-right: 1px solid var(--hairline); }
+.palette { width: 96px; flex: none; background: var(--paper-panel); border-right: 1px solid var(--hairline); overflow-y: auto; padding: 8px 0; }
+.pal-title { font-family: var(--serif); font-size: 11px; letter-spacing: 4px; color: var(--ink-faint); text-align: center; padding: 2px 0 6px; }
+.pal-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  width: calc(100% - 16px); margin: 1px 8px; padding: 6px 2px 7px;
+  border: none; border-left: 2px solid transparent; background: transparent;
+  cursor: pointer; border-radius: 0 2px 2px 0; color: var(--ink);
+  transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+.pal-btn:hover { background: rgba(44, 40, 34, 0.05); }
+.pal-btn.active { border-left-color: var(--vermilion); background: var(--vermilion-soft); }
+.pal-icon { display: block; width: 56px; height: 36px; }
+.pal-icon :deep(svg) { display: block; width: 100%; height: 100%; }
+.pal-name { font-size: 11px; color: var(--ink-soft); }
+.pal-btn.active .pal-name { color: var(--ink); }
 </style>

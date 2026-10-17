@@ -1,0 +1,449 @@
+/* FieldFlow · canvas — 画布 SVG 与浮动检查器样式
+ * 只使用 tokens.css 的变量;这里出现的一切颜色都来自 --paper/--ink/--vermilion… */
+
+/* ============ 画布容器 ============ */
+
+.ff-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--grid-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-major) 1px, transparent 1px),
+    linear-gradient(var(--grid-minor) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-minor) 1px, transparent 1px);
+  background-size: 200px 200px, 200px 200px, 40px 40px, 40px 40px;
+  background-position: center;
+}
+
+.ff-canvas::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.3;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.32 0 0 0 0 0.27 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.ff-canvas svg.ff-stage {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ff-canvas svg.ff-stage.tool-select { cursor: default; }
+.ff-canvas svg.ff-stage.tool-eraser { cursor: pointer; }
+.ff-canvas svg.ff-stage.panning { cursor: grabbing; }
+
+/* 只有元件边层接收指针;其余层穿透 */
+.ff-canvas [data-layer="underlay"],
+.ff-canvas [data-layer="junctions"],
+.ff-canvas [data-layer="efield"],
+.ff-canvas [data-layer="readings"],
+.ff-canvas [data-layer="symbol-text"],
+.ff-canvas [data-layer="particles"],
+.ff-canvas [data-layer="overlay"] {
+  pointer-events: none;
+}
+
+/* ============ 符号基础 ============ */
+
+.ff-canvas .wire-line { stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
+
+.ff-canvas .sym {
+  stroke: var(--ink);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ff-canvas .sym .fill-paper { fill: var(--paper-raised); }
+.ff-canvas .sym .fill-ink { fill: var(--ink); stroke: none; }
+.ff-canvas .sym .thin { stroke-width: 1.4; }
+.ff-canvas .sym .thick { stroke-width: 3.5; }
+
+/* 未旋转文字层:字母永远正立,锚点在中点 */
+.ff-canvas .sym-letter {
+  fill: var(--ink);
+  stroke: none;
+  font-family: var(--serif);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ff-canvas .sym-sign {
+  fill: var(--ink);
+  stroke: none;
+  font-family: var(--serif);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* 选中:轻微加重,虚框由 .sel-marker 负责 */
+.ff-canvas .edge-group.selected .sym { stroke-width: 2.4; }
+
+.ff-canvas .edge-hit {
+  stroke: transparent;
+  stroke-width: 18;
+  fill: none;
+  cursor: pointer;
+}
+
+.ff-canvas .sel-marker {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.3;
+  stroke-dasharray: 5 4;
+  animation: ff-canvas-march 0.9s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes ff-canvas-march { to { stroke-dashoffset: -9; } }
+
+.ff-canvas .junction-dot { fill: var(--ink); }
+
+.ff-canvas .efield-arrow {
+  stroke: var(--ink);
+  opacity: 0.62;
+  fill: none;
+  stroke-width: 1;
+}
+.ff-canvas .efield-arrow polygon { fill: var(--ink); stroke: none; }
+
+.ff-canvas .reading-text {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  fill: var(--reading);
+  paint-order: stroke;
+  stroke: var(--paper);
+  stroke-opacity: 0.9;
+  stroke-width: 3px;
+}
+
+.ff-canvas .phi-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  fill: var(--ink-soft);
+  paint-order: stroke;
+  stroke: var(--paper);
+  stroke-opacity: 0.9;
+  stroke-width: 3px;
+}
+
+.ff-canvas .particle { fill: var(--vermilion); }
+.ff-canvas .particle.electron { fill: var(--indigo); }
+.ff-canvas [data-layer="particles"].dimmed { opacity: 0.4; }
+.ff-canvas [data-layer="particles"].dimmed .particle {
+  stroke: var(--ink);
+  stroke-opacity: 0.6;
+  stroke-width: 0.6;
+}
+
+/* ============ 灯泡:暖光 + 闪烁 ============ */
+
+.ff-canvas .lamp-glow { mix-blend-mode: screen; }
+
+.ff-canvas .lamp-filament {
+  stroke: #ffd27a;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  opacity: 0;
+  mix-blend-mode: screen;
+}
+
+/* 3–5% 振幅的不规则闪烁;整体 opacity 由 setGlow 控制,闪烁只乘在组内 */
+.ff-canvas .lamp-flicker {
+  animation: ff-lamp-flicker 2.6s steps(1, end) infinite;
+  transform-origin: 0 0;
+}
+
+@keyframes ff-lamp-flicker {
+  0%   { opacity: 1; }
+  7%   { opacity: 0.96; }
+  9%   { opacity: 1; }
+  23%  { opacity: 0.965; }
+  25%  { opacity: 1; }
+  41%  { opacity: 0.975; }
+  43%  { opacity: 1; }
+  58%  { opacity: 0.955; }
+  61%  { opacity: 1; }
+  74%  { opacity: 0.97; }
+  77%  { opacity: 1; }
+  88%  { opacity: 0.96; }
+  91%  { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+/* ============ 电动机:转子 ============ */
+
+.ff-canvas .motor-rotor-ring { stroke: var(--ink-faint); }
+.ff-canvas .motor-rotor { transform-origin: 0 0; }
+
+/* ============ 电铃:摇动(振幅由 --ring-amp 驱动) ============ */
+
+.ff-canvas .bell-shake {
+  --ring-amp: 0;
+  transform-origin: 0 0;
+  animation: ff-bell-ring 180ms ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+
+@keyframes ff-bell-ring {
+  from { transform: rotate(calc(var(--ring-amp) * -11deg)) translateX(calc(var(--ring-amp) * -0.8px)); }
+  to   { transform: rotate(calc(var(--ring-amp) * 11deg)) translateX(calc(var(--ring-amp) * 0.8px)); }
+}
+
+/* ============ 放置预览 / 空画布提示 / 状态条 ============ */
+
+.ff-canvas .ghost-sym { opacity: 0.45; pointer-events: none; }
+.ff-canvas .ghost-sym.dashed .wire-line,
+.ff-canvas .ghost-sym.dashed line {
+  stroke-dasharray: 6 4;
+}
+
+.ff-empty-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: none;
+  color: var(--ink-faint);
+  font-family: var(--serif);
+}
+
+.ff-empty-hint .hint-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.ff-empty-hint .hint-keys { font-family: var(--mono); font-size: 11px; }
+
+.ff-statusbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  background: linear-gradient(transparent, var(--paper) 40%);
+  pointer-events: none;
+}
+
+/* ============ 浮动检查器 ============ */
+
+.ff-insp-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--scrim);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: ff-insp-fade var(--dur-mid) var(--ease-out);
+}
+
+@keyframes ff-insp-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.ff-inspector {
+  position: fixed;
+  z-index: 41;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(78vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 18px 14px;
+  background: var(--paper-panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-float);
+  color: var(--ink);
+  animation: ff-insp-in var(--dur-mid) var(--ease-spring);
+  transform-origin: var(--insp-origin, 50% 50%);
+}
+
+.ff-inspector.flip { transform-origin: var(--insp-origin, 50% 50%); }
+
+@keyframes ff-insp-in {
+  from { opacity: 0; transform: scale(0.92) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* 标题上方的分隔线与「元件检查器」小标 */
+.ff-insp-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-family: var(--serif);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  font-variant: small-caps;
+  color: var(--ink-faint);
+}
+
+.ff-insp-kicker::before,
+.ff-insp-kicker::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.ff-insp-name {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.ff-insp-def {
+  font-family: var(--serif);
+  font-size: 11.5px;
+  line-height: 1.9;
+  color: var(--ink-soft);
+  background: var(--paper-inset);
+  border-left: 2px solid var(--vermilion);
+  padding: 6px 10px;
+  margin-bottom: 10px;
+}
+
+.ff-insp-def b { color: var(--ink); }
+
+.ff-insp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.ff-insp-row > label {
+  font-size: 12px;
+  color: var(--ink-soft);
+  flex: none;
+}
+
+.ff-insp-row input[type="number"] {
+  width: 88px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--ink-faint);
+  padding: 2px 4px;
+  text-align: right;
+}
+
+.ff-insp-row input[type="number"]:focus {
+  outline: none;
+  border-bottom-color: var(--vermilion);
+}
+
+.ff-insp-row input[type="range"] {
+  flex: 1;
+  min-width: 60px;
+  accent-color: var(--vermilion);
+}
+
+.ff-insp-unit {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  min-width: 26px;
+  text-align: right;
+}
+
+.ff-insp-vals {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+
+.ff-insp-vals .kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.ff-insp-vals .kv span { color: var(--ink-faint); }
+.ff-insp-vals .kv b {
+  font-family: var(--mono);
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.ff-insp-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.ff-insp-actions button {
+  font-size: 12px;
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--ink-soft);
+  transition: border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.ff-insp-actions button:hover {
+  border-color: var(--ink-soft);
+  color: var(--ink);
+}
+
+.ff-insp-actions button.danger:hover {
+  border-color: var(--vermilion);
+  color: var(--vermilion);
+}
+
+/* 被检查的元件:轻微抬起(缩放加在符号子组上,
+   不能加在 .edge-group 上 —— 那会覆盖它的 translate/rotate 定位) */
+.ff-canvas .edge-group.inspected .sym {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(1.03);
+  filter: drop-shadow(0 3px 7px rgba(44, 40, 34, 0.3));
+  transition: transform var(--dur-mid) var(--ease-spring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ff-inspector,
+  .ff-insp-scrim { animation: none; }
+  .ff-canvas .bell-shake { animation: none; }
+  .ff-canvas .lamp-flicker { animation: none; }
+}

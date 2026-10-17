@@ -1,6 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
-import EditorView from '../views/EditorView.vue'
+import HomeView from './views/HomeView.vue'
+import EditorView from './views/EditorView.vue'
 
 /* Hash 路由:GitHub Pages 静态托管 + file:// 打开都不需要服务端重写规则 */
 export default createRouter({
