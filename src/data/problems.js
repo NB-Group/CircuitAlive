@@ -8,6 +8,7 @@
  * 所有边只连接正交相邻格点,回路均为矩形,电压表探针单独走空白行。
  */
 import { T } from '../core/util.js'
+import { realProblems } from './problems-real.js'
 
 /* 一行 / 一列导线的元组链(先横后竖的局部版本,方向自动判断) */
 const h = (y, x0, x1) => {
@@ -393,4 +394,8 @@ export const problems = [
 
 export const problemTypes = ['串联', '并联', '故障分析', '动态电路', '伏安法']
 
-export const getProblem = (id) => problems.find((p) => p.id === id) || null
+/* 题库 = 原创模拟题 + 上海中考真题。真题排在前面:
+   用户要的是真卷,自编题只用来补题型空缺。 */
+export const allProblems = [...realProblems, ...problems]
+
+export const getProblem = (id) => allProblems.find((p) => p.id === id) || null

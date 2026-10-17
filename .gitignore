@@ -8,3 +8,5 @@ dist/
 *.swp
 *.log
 .vite/
+__pycache__/
+*.pyc

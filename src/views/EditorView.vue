@@ -233,7 +233,7 @@ const stateText = computed(() => {
         <div class="prob-head">
           <span class="ff-h">题目</span>
           <span class="prob-title">{{ problem.title }}</span>
-          <span class="prob-src">{{ problem.source }}<template v-if="problem.year"> · {{ problem.year }}</template></span>
+          <span class="prob-src">{{ problem.source }}<template v-if="problem.number"> · 第 {{ problem.number }} 题</template></span>
           <button class="ff-btn ghost" @click="showAnswer = !showAnswer">{{ showAnswer ? '收起解析' : '查看解析' }}</button>
         </div>
         <MathText class="prob-text" :text="problem.statement" />

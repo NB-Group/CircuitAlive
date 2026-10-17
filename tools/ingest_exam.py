@@ -71,7 +71,15 @@ EXTRACT_PROMPT = """这是一张初中物理试卷页面。请完成两件事:
 }
 
 元件 type 只能取: battery, switch, resistor, lamp, rheostat, ammeter, voltmeter, wire。
-连接关系要写出每条支路,能判断串并联。看不清就标注在 notes 里,不要编造。"""
+连接关系要写出每条支路,能判断串并联。看不清就标注在 notes 里,不要编造。
+
+**只提取电路计算题**。以下类型请跳过,不要放进 problems:
+- 电磁铁、通电螺线管、磁极判断、磁感线方向(这些不是电路计算)
+- 纯实验操作描述题(没有可解的电路)
+- 画图题、连线题(只要求补线,没有已知参数)
+- 光学、热学、力学题
+
+如果一页里没有电路计算题,输出 {"problems": []}。宁可少收,不要收错。"""
 
 
 def render_pdf(pdf_path, pages, dpi, outdir):
@@ -123,214 +131,8 @@ def parse_json(text):
 
 # ---------- 逻辑图 → 网格布局 ----------
 
-def layout_circuit(circuit):
-    """逻辑连接图 → 网格边元组。
-
-    真正的电路布局算法,分三步,与模型能力无关:
-
-    1. 建图:元件是节点,连接是边;电源作为根。
-    2. 用 Tarjan 求桥(bridge)与双连通分量(BCC)。
-       桥 = 串联链上的边;同一个 BCC 内的边 = 一个并联块。
-    3. 从电源出发沿桥链布局,遇到 BCC 就把各条支路并排铺开,
-       块的两端落在同一对列上;最后正交走线补导线。
-
-    返回 [type, x1, y1, x2, y2, props],失败返回 None。
-    """
-    comps = circuit.get('components') or []
-    conns = circuit.get('connections') or []
-    if not comps or not conns:
-        return None
-
-    by_id = {c['id']: c for c in comps}
-    norm = {}
-    for c in comps:
-        raw = (c.get('type') or '').strip()
-        norm[c['id']] = TYPE_MAP.get(raw.lower()) or TYPE_MAP.get(raw) or 'wire'
-
-    adj = {cid: {} for cid in by_id}
-    for k in conns:
-        a, b = k.get('from'), k.get('to')
-        if a in adj and b in adj and a != b:
-            adj[a][b] = True
-            adj[b][a] = True
-
-    bat = next((cid for cid in by_id if norm[cid] == 'battery'), None)
-    if not bat:
-        return None
-
-    props = {
-        'battery': {'V': 3}, 'switch': {'closed': False},
-        'resistor': {'R': 10}, 'lamp': {'R': 10},
-        'rheostat': {'Rmax': 50, 'wiper': 0.5},
-        'ammeter': {}, 'voltmeter': {}, 'wire': {},
-    }
-
-    nodes = [cid for cid in by_id if norm[cid] != 'voltmeter']
-    n = len(nodes)
-    if n < 2:
-        return None
-    idx = {cid: i for i, cid in enumerate(nodes)}
-
-    # ---------- 2. Tarjan:桥与双连通分量 ----------
-    disc = [-1] * n
-    low = [0] * n
-    timer = [0]
-    stack = []
-    bccs = []          # 每个 BCC:边列表 [(u, v)]
-    bridges = set()
-
-    def tarjan(u, parent):
-        disc[u] = low[u] = timer[0]
-        timer[0] += 1
-        for v in adj[nodes[u]]:
-            vi = idx.get(v)
-            if vi is None:
-                continue
-            if disc[vi] == -1:
-                stack.append((u, vi))
-                tarjan(vi, u)
-                low[u] = min(low[u], low[vi])
-                if low[vi] > disc[u]:
-                    bridges.add((min(u, vi), max(u, vi)))
-                    # 弹出这个 BCC
-                    comp = []
-                    while stack:
-                        e = stack.pop()
-                        comp.append(e)
-                        if e == (u, vi):
-                            break
-                    if comp:
-                        bccs.append(comp)
-            elif vi != parent and disc[vi] < disc[u]:
-                stack.append((u, vi))
-                low[u] = min(low[u], disc[vi])
-
-    for i in range(n):
-        if disc[i] == -1:
-            tarjan(i, -1)
-    if stack:
-        bccs.append(stack[:])
-
-    # ---------- 3. 布局 ----------
-    # 用"列 x 行 y"的网格。每个元件占一格;列间距 2,行间距 2。
-    # 主轴(串联链)沿 x 增长;并联块内支路沿 y 并排。
-    pos = {}
-    edges = []
-    used = set()
-    next_col = [0]
-    occupied = {}       # (x,y) -> cid
-
-    def put(cid, x, y):
-        pos[cid] = (x, y)
-        occupied[(x, y)] = cid
-
-    def add_edge(t, a, b):
-        a = (a[0], a[1]); b = (b[0], b[1])
-        if a == b:
-            return
-        key = (min(a, b), max(a, b))
-        if key in used:
-            return
-        used.add(key)
-        edges.append([t, a[0], a[1], b[0], b[1], dict(props.get(t, {}))])
-
-    def wire_path(p, q):
-        """正交逐格路径。"""
-        pts = [p]
-        cur = list(p)
-        while cur[0] != q[0]:
-            cur = [cur[0] + (1 if q[0] > cur[0] else -1), cur[1]]
-            pts.append(tuple(cur))
-        while cur[1] != q[1]:
-            cur = [cur[0], cur[1] + (1 if q[1] > cur[1] else -1)]
-            pts.append(tuple(cur))
-        return pts
-
-    # 每个 BCC 的边集合,便于判断某条边是否在并联块里
-    bcc_of = {}
-    for bi, comp in enumerate(bccs):
-        for (u, v) in comp:
-            bcc_of[(min(u, v), max(u, v))] = bi
-
-    # 从电源开始 BFS,沿"块"推进
-    # 块内所有节点共用一个"起列"和一个"止列"
-    placed = set()
-    put(bat, 0, 0)
-    placed.add(bat)
-    frontier = [(bat, 0, 0)]   # (cid, col, row)
-
-    while frontier:
-        cur, cx, cy = frontier.pop(0)
-        for nb in sorted(adj[cur]):
-            if nb in placed or norm[nb] == 'voltmeter':
-                continue
-            ui, vi = idx[cur], idx[nb]
-            key = (min(ui, vi), max(ui, vi))
-            b = bcc_of.get(key)
-
-            if key in bridges:
-                # 串联:直接放在右边一列
-                x, y = cx + 2, cy
-                put(nb, x, y)
-                placed.add(nb)
-                add_edge(norm[nb], pos[cur], (x, y))
-                frontier.append((nb, x, y))
-            elif b is not None:
-                # 并联块:找出块内所有节点,并排铺开
-                block_nodes = set()
-                for (u, v) in bccs[b]:
-                    block_nodes.add(nodes[u]); block_nodes.add(nodes[v])
-                block_nodes -= placed
-                block_nodes.discard(cur)
-                # 支路数 = 块内除公共端外的节点数
-                branches = sorted(block_nodes, key=lambda c: (norm[c], c))
-                x0 = cx + 2
-                for i, cid in enumerate(branches):
-                    y = cy + i * 2
-                    put(cid, x0, y)
-                    placed.add(cid)
-                # 从当前节点连到每条支路(横向)
-                for cid in branches:
-                    add_edge(norm[cid], pos[cur], pos[cid])
-                # 支路末端汇合:加一条竖直汇流线
-                if branches:
-                    ys = [pos[c][1] for c in branches]
-                    xr = x0 + 1
-                    for y in range(min(ys), max(ys) + 1):
-                        add_edge('wire', (xr, y), (xr, y + 1)) if y < max(ys) else None
-                    for cid in branches:
-                        add_edge('wire', pos[cid], (xr, pos[cid][1]))
-                # 继续从每条支路推进
-                for cid in branches:
-                    frontier.append((cid, x0, pos[cid][1]))
-            else:
-                # 兜底:普通连接
-                x, y = cx + 2, cy
-                if (x, y) in occupied:
-                    y += 2
-                put(nb, x, y)
-                placed.add(nb)
-                add_edge(norm[nb], pos[cur], (x, y))
-                frontier.append((nb, x, y))
-
-    # 没被访问到的元件(不连通)丢弃
-    # ---------- 4. 电压表:并联挂到被测元件旁 ----------
-    for cid in by_id:
-        if norm[cid] != 'voltmeter':
-            continue
-        nbs = [nb for nb in adj[cid] if nb in pos]
-        if len(nbs) < 2:
-            continue
-        a, b = nbs[0], nbs[1]
-        pa, pb = pos[a], pos[b]
-        y = max(pa[1], pb[1]) + 2
-        path = wire_path(pa, (pa[0], y)) + wire_path((pa[0], y), (pb[0], y))[1:] + wire_path((pb[0], y), pb)[1:]
-        mid = len(path) // 2
-        for i in range(len(path) - 1):
-            add_edge('voltmeter' if i == mid else 'wire', path[i], path[i + 1])
-
-    return edges or None
-
+# 布局统一走 elkjs(tools/circuit-layout.mjs),不再维护手写布局。
+# 旧的 Python 手写版本会产出跨格边(违反网格不变量),已删除。
 
 def elk_layout(circuit):
     """用 elkjs(通过 node 脚本)做自动布局。"""
@@ -343,7 +145,14 @@ def elk_layout(circuit):
         if proc.returncode != 0:
             return None
         data = json.loads(proc.stdout)
-        return data[0]['edges'] if data else None
+        edges = data[0]['edges'] if data else None
+        if not edges:
+            return None
+        # 网格不变量:每条边必须连接相邻格点(跨格边会让求解器抛异常)
+        for e in edges:
+            if abs(e[1] - e[3]) + abs(e[2] - e[4]) != 1:
+                return None
+        return edges
     except Exception:
         return None
 

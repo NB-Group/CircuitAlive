@@ -6,7 +6,7 @@
  * 主题由 App.vue 注入(prop theme / emit toggle-theme),本视图不自己存状态。 */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { problems, problemTypes } from '../data/problems.js'
+import { allProblems as problems, problemTypes } from '../data/problems.js'
 import MathText from '../components/MathText.vue'
 import { Model } from '../core/model.js'
 import { solver } from '../core/solver.js'
@@ -237,7 +237,7 @@ const presetCards = [
           >
             <div class="card-top">
               <span class="card-type">{{ p.type }}</span>
-              <span class="card-year ff-num">{{ p.source }}</span>
+              <span class="card-year ff-num">{{ p.source }}<template v-if="p.number"> · 第 {{ p.number }} 题</template></span>
             </div>
 
             <h3 class="card-title">{{ p.title }}</h3>
