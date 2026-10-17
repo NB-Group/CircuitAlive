@@ -2,13 +2,10 @@
  * 全部为解析对照用例(手算期望值),无框架、无依赖。 */
 'use strict';
 
-const FF = require('../js/util.js');
-require('../js/solver.js');
-const { E, T, solver } = FF;
+import * as U from '../src/core/util.js';
+import { solver } from '../src/core/solver.js';
+const { E, T, wireChain: W, nodeKey: nk, edgeKey, clamp } = U;
 const { solve, edgeU, findSingleLoop } = solver;
-const W = FF.wireChain;
-
-const nk = FF.nodeKey;
 let passed = 0, failed = 0;
 const failures = [];
 
@@ -323,7 +320,7 @@ test('网格不变量: 非相邻格点/对角线/同点的边一律拒绝', () =
     try { E(T.WIRE, c[0], c[1], c[2], c[3]); } catch (e) { threw = true; }
     assert(threw, `(${c}) 应抛异常`);
   });
-  assert(FF.edgeKey([2, 3], [4, 5]) === FF.edgeKey([4, 5], [2, 3]), 'edgeKey 与端点顺序无关');
+  assert(edgeKey([2, 3], [4, 5]) === edgeKey([4, 5], [2, 3]), 'edgeKey 与端点顺序无关');
 });
 
 /* ---------- 17. 参数防御: 越界值被钳制, 不破坏矩阵 ---------- */

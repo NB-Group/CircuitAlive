@@ -1,0 +1,78 @@
+/* FieldFlow · 纸张与界面基础件 */
+
+/* 方格纸底:两层渐变画格,5 格一粗 */
+.ff-paper-grid {
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--grid-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-major) 1px, transparent 1px),
+    linear-gradient(var(--grid-minor) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-minor) 1px, transparent 1px);
+  background-size: 200px 200px, 200px 200px, 40px 40px, 40px 40px;
+}
+
+/* 纸张颗粒(极淡噪点,避免纯色塑料感) */
+.ff-paper-noise::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.32 0 0 0 0 0.27 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* 按钮 */
+.ff-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--paper-panel);
+  color: var(--ink);
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) ease,
+              border-color var(--dur-fast) ease,
+              transform var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) ease;
+}
+
+.ff-btn:hover:not(:disabled) {
+  background: var(--paper-raised);
+  border-color: var(--ink-faint);
+  box-shadow: var(--shadow-soft);
+}
+
+.ff-btn:active:not(:disabled) { transform: translateY(1px) scale(0.99); }
+.ff-btn:disabled { color: var(--ink-faint); cursor: default; opacity: 0.6; }
+
+.ff-btn.primary {
+  background: var(--vermilion);
+  border-color: var(--vermilion);
+  color: #fff8ef;
+}
+.ff-btn.primary:hover:not(:disabled) { filter: brightness(1.07); }
+
+.ff-btn.ghost { background: transparent; border-color: transparent; }
+.ff-btn.ghost:hover:not(:disabled) { background: var(--vermilion-soft); border-color: transparent; }
+
+/* 小节标题 */
+.ff-h {
+  font-family: var(--serif);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--ink-faint);
+}
+
+/* 数字 */
+.ff-num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* 焦点可见性 */
+:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}

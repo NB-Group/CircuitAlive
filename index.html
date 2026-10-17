@@ -1,107 +1,13 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>FieldFlow · 电学实验台</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700;900&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-
-<header id="topbar">
-  <div class="brand">
-    <h1>FieldFlow</h1>
-    <span class="sub">电学实验台 · 电流 / 电势 / 电场</span>
-  </div>
-
-  <nav class="overlays" id="overlay-toggles" aria-label="可视化开关">
-    <button class="toggle on" data-layer="particles"><i></i>电流</button>
-    <button class="toggle" data-layer="electrons"><i></i>电子流向</button>
-    <button class="toggle" data-layer="potential"><i></i>电势</button>
-    <button class="toggle" data-layer="phiLabels"><i></i>电势数值</button>
-    <button class="toggle" data-layer="efield"><i></i>电场</button>
-  </nav>
-
-  <div class="actions">
-    <select id="preset-select" aria-label="预置电路">
-      <option value="">预置电路…</option>
-    </select>
-    <button id="btn-panel" class="mobile-only" title="分析面板">面板</button>
-    <button id="btn-undo" title="撤销 (Ctrl+Z)">撤销</button>
-    <button id="btn-redo" title="重做 (Ctrl+Y)">重做</button>
-    <button id="btn-clear" title="清空画布">清空</button>
-  </div>
-</header>
-
-<main>
-  <aside id="palette" aria-label="元件栏">
-    <div class="palette-title">元件</div>
-    <!-- 元件按钮由 symbols.js 生成 -->
-  </aside>
-
-  <section id="stage">
-    <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
-      <defs id="layer-defs"></defs>
-      <g id="layer-paper"></g>
-      <g id="layer-underlay"></g>   <!-- 电势边填充 / 节点盘 -->
-      <g id="layer-edges"></g>      <!-- 导线与元件符号 -->
-      <g id="layer-junctions"></g>  <!-- 结点实心点 -->
-      <g id="layer-efield"></g>     <!-- 电场箭头 -->
-      <g id="layer-readings"></g>   <!-- 仪表读数 / 电势标注 -->
-      <g id="layer-particles"></g>  <!-- 电流粒子 -->
-      <g id="layer-overlay"></g>    <!-- 选中 / 探针 / 拖画预览 -->
-    </svg>
-    <div id="empty-hint">
-      <p class="hint-title">从左侧选择元件</p>
-      <p>点击网格线段放置 · 拖画导线 · 点开关切换开合</p>
-      <p class="hint-keys">R 翻转极性 · Del 删除 · 空格拖拽平移 · 滚轮缩放</p>
-    </div>
-    <div id="statusbar">
-      <span id="status-hint">就绪</span>
-      <span id="state-badge" class="state-empty">空</span>
-    </div>
-  </section>
-
-  <aside id="panel">
-    <div id="panel-handle" aria-label="拖动调整面板高度"><span></span></div>
-    <section class="panel-sec" id="sec-state">
-      <h2>电路状态</h2>
-      <div id="state-detail">—</div>
-    </section>
-    <section class="panel-sec" id="sec-meters">
-      <h2>仪表读数</h2>
-      <div id="meter-list"><div class="panel-empty">无仪表</div></div>
-    </section>
-    <section class="panel-sec" id="sec-inspector">
-      <h2>元件检查器</h2>
-      <div id="inspector-body"><div class="panel-empty">点击画布上的元件</div></div>
-    </section>
-    <section class="panel-sec" id="sec-elements">
-      <h2>元件明细</h2>
-      <div id="element-table"></div>
-    </section>
-    <section class="panel-sec" id="sec-potential">
-      <h2>电势分布</h2>
-      <div id="potential-body"></div>
-    </section>
-    <section class="panel-sec" id="sec-probe" hidden>
-      <h2>截面探针</h2>
-      <div id="probe-body"></div>
-    </section>
-  </aside>
-</main>
-
-<script src="js/util.js"></script>
-<script src="js/solver.js"></script>
-<script src="js/model.js"></script>
-<script src="js/symbols.js"></script>
-<script src="js/render.js"></script>
-<script src="js/interact.js"></script>
-<script src="js/panel.js"></script>
-<script src="js/presets.js"></script>
-<script src="js/main.js"></script>
-</body>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ff-scaffold</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>

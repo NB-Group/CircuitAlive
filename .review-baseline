@@ -1,0 +1,6 @@
+# FieldFlow 审查基线
+# 每次全量审查后更新此文件,记录被审查的 commit。
+# "未审查的代码" = git diff <此 commit>..HEAD
+reviewed_commit: 5c8c992
+reviewed_at: 2026-10-16
+note: 重构前(vite/vue 迁移前)的最后一次全量基线;重构后的增量需重新审查。
