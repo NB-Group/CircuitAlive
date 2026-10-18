@@ -86,6 +86,9 @@ function syncSolution() {
     R.syncSolution()
     lastSol = props.solution
   }
+  /* 读数写在 symbol-text 层的原节点上;检查中的克隆不会自动跟着变,
+     解刷新后重克隆一次,让 overlay 里的读数也是新的 */
+  if (I.inspectKey) setInspected(I.inspectKey)
 }
 
 function emitViewport() {
@@ -95,6 +98,8 @@ function emitViewport() {
 
 function onModelChanged() {
   syncStructure()
+  /* 结构层重建会换掉新的符号组;检查中要重新克隆,否则 overlay 里是旧元件 */
+  if (I.inspectKey) setInspected(I.inspectKey)
   /* 首次拿到非空电路(父层 mounted 里载入预置)时补一次适配视图 */
   if (!fittedNonEmpty && props.model.edges.size) {
     fittedNonEmpty = true
@@ -236,7 +241,8 @@ function startLongPress(ev, key) {
     }
     clearGhost()
     selectKey(key)
-    hint('元件检查器')
+    emit('edge-click', key)
+    hint('长按打开元件检查器')
     I.suppressUp = true
   }, 450)
   I.lp = { timer, x0, y0, id: ev.pointerId }
@@ -304,9 +310,12 @@ function onDown(ev) {
     return
   }
   if (ev.button !== 0) return
-  /* 触摸/笔长按 = 打开检查器:仅在选择工具下生效,
-     放置/橡皮/导线工具里长按不应弹面板 */
-  if (touch && hitKey && props.tool === 'select') startLongPress(ev, hitKey)
+  /* 长按 = 打开检查器:鼠标与触摸统一,仅在选择工具下生效,
+     放置/橡皮/导线工具里长按不应弹面板;导线不长按(单击已可选中)。
+     开关的触摸开合走 tap-switch 抬手,长按定时器会吞掉它。 */
+  if (hitKey && props.tool === 'select' && !(hit && hit.type === T.WIRE)) {
+    startLongPress(ev, hitKey)
+  }
 
   /* 点开关符号中部 = 开合,与当前工具无关(橡皮除外) */
   if (hit && hit.type === T.SWITCH && props.tool !== 'eraser') {
@@ -658,16 +667,27 @@ function onKeyUp(ev) {
   }
 }
 
-/* ---------- 检查器联动(抬起元件 + 高亮) ---------- */
+/* ---------- 检查器联动 ----------
+   打开检查器时:画布其余层模糊压暗作背景,被检元件整组克隆到
+   overlay 层(不模糊)并抬起。原件留在原层一起虚化,不做特殊处理。 */
 
 function setInspected(key) {
   if (!svgEl.value) return
-  svgEl.value.querySelectorAll('.edge-group.inspected').forEach((g) => g.classList.remove('inspected'))
-  if (!key || key === '__wires__') return
+  I.inspectKey = key && key !== '__wires__' ? key : null
+  const active = !!I.inspectKey
+  svgEl.value.classList.toggle('inspecting', active)
+  const ov = svgEl.value.querySelector('[data-layer="overlay"]')
+  if (ov) ov.innerHTML = ''
+  if (!active) return
   const edge = props.model.edges.get(key)
   if (!edge) return
-  const g = svgEl.value.querySelector('.edge-group[data-edge-id="' + edge.id + '"]')
-  if (g) g.classList.add('inspected')
+  /* 符号组 + 该元件的所有文字(字母/标注/读数)一起克隆 */
+  const parts = svgEl.value.querySelectorAll('[data-edge-id="' + edge.id + '"]')
+  parts.forEach((el) => {
+    const c = el.cloneNode(true)
+    c.classList.add('overlay-clone')
+    if (ov) ov.appendChild(c)
+  })
 }
 
 /* 顶部被浮层遮住的高度:题目面板是 absolute 覆盖在画布上的,

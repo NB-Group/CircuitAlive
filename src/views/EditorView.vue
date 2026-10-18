@@ -36,8 +36,13 @@ const opts = ref({
   efield: false
 })
 
-/* 当前检查的元件:长按/右键/选中后浮出检查器 */
-const inspectedKey = computed(() => selectedKey.value)
+/* 选中与检查分离:单击只高亮(虚框),长按/右键才浮出检查器。
+   检查器打开时由 InspectorPopover 发 bus 'inspect' 给画布,
+   画布给元件加 .inspected(抬起+阴影),背景由 scrim 模糊压暗。 */
+const inspectedKey = ref(null)
+
+function onEdgeClick(key) { inspectedKey.value = key }
+function closeInspector() { inspectedKey.value = null; selectedKey.value = null }
 const problem = ref(null)
 const showAnswer = ref(false)
 
@@ -260,6 +265,7 @@ const stateText = computed(() => {
         :tool="tool"
         :armed="armed"
         @select="onSelect"
+        @edge-click="onEdgeClick"
         @placed="onPlaced"
         @changed="resolve"
         @escape="setTool('select')"
@@ -270,7 +276,7 @@ const stateText = computed(() => {
         :model="model"
         :solution="solution"
         :edge-key="inspectedKey"
-        @close="selectedKey = null"
+        @close="closeInspector"
         @changed="resolve"
       />
     </main>

@@ -230,10 +230,9 @@
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: var(--scrim);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  animation: ff-insp-fade var(--dur-mid) var(--ease-out);
+  /* 只做点击捕获层:压暗和模糊由画布内 inspecting 分层处理,
+     这里再叠 backdrop blur 会把 overlay 里清晰的元件一起糊掉 */
+  background: transparent;
 }
 
 @keyframes ff-insp-fade {
@@ -424,18 +423,56 @@
 .ff-canvas [data-layer="underlay"] { opacity: 1; }
 html[data-theme='dark'] .ff-canvas [data-layer="underlay"] { opacity: 0.55; }
 
-/* 被检查的元件:轻微抬起(缩放加在符号子组上,
-   不能加在 .edge-group 上 —— 那会覆盖它的 translate/rotate 定位) */
-.ff-canvas .edge-group.inspected .sym {
-  transform-box: fill-box;
-  transform-origin: center;
-  transform: scale(1.03);
-  filter: drop-shadow(0 3px 7px rgba(44, 40, 34, 0.3));
-  transition: transform var(--dur-mid) var(--ease-spring);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .ff-inspector,
   .ff-insp-scrim { animation: none; }
   .ff-canvas .bell-shake { animation: none; }
+}
+
+/* 题目标注(R1、S、L1…):比仪表字母小一档,墨色偏柔 */
+.ff-canvas .sym-tag {
+  fill: var(--ink-soft, #5a544a);
+  stroke: none;
+  font-family: var(--serif);
+  font-size: 10px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* 检查模式:画布其余层模糊压暗作背景,只有 overlay(被检元件的克隆)
+   保持清晰。defs 不渲染不用处理;overlay 自身绝对不能进模糊组。 */
+.ff-canvas.inspecting [data-layer="grid"],
+.ff-canvas.inspecting [data-layer="underlay"],
+.ff-canvas.inspecting [data-layer="edges"],
+.ff-canvas.inspecting [data-layer="junctions"],
+.ff-canvas.inspecting [data-layer="efield"],
+.ff-canvas.inspecting [data-layer="readings"],
+.ff-canvas.inspecting [data-layer="symbol-text"],
+.ff-canvas.inspecting [data-layer="particles"] {
+  filter: blur(2.5px);
+  opacity: 0.55;
+  transition: filter var(--dur-mid) var(--ease-out), opacity var(--dur-mid) var(--ease-out);
+}
+
+/* 被检元件克隆:轻微抬起 + 阴影,弹入 */
+.ff-canvas .overlay-clone .sym,
+.ff-canvas .overlay-clone.line-sym {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ff-insp-lift 300ms var(--ease-spring) both;
+}
+.ff-canvas .overlay-clone.edge-group .sym {
+  filter: drop-shadow(0 3px 7px rgba(44, 40, 34, 0.32));
+}
+@keyframes ff-insp-lift {
+  from { transform: scale(1); }
+  to   { transform: scale(1.045); }
+}
+.ff-canvas .overlay-clone.edge-group .sym {
+  animation-fill-mode: forwards;
+}
+.ff-canvas .overlay-clone text { paint-order: stroke; stroke: var(--paper); stroke-width: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ff-canvas .overlay-clone .sym { animation: none; transform: scale(1.045); }
 }

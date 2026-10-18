@@ -89,6 +89,17 @@ function localToWorld(e, lx, ly) {
   return [mx + lx * c - ly * s, my + lx * s + ly * c];
 }
 
+/* 题目标注的尾数字转下标:R1 → R₁、A2 → A₂。
+   题面一律写 R1/A1,图上用下标跟课本排版一致。 */
+const SUBS = { '0': '\u2080', '1': '\u2081', '2': '\u2082', '3': '\u2083', '4': '\u2084',
+               '5': '\u2085', '6': '\u2086', '7': '\u2087', '8': '\u2088', '9': '\u2089' };
+function toSub(label) {
+  const s = String(label);
+  let end = s.length;
+  while (end > 0 && SUBS[s[end - 1]]) end--;
+  return end === s.length ? s : s.slice(0, end) + [...s.slice(end)].map(ch => SUBS[ch]).join('');
+}
+
 /* 需要文字层的元件:局部锚点(字母在正中) */
 const LETTERS = {
   [T.AMMETER]: 'A',
@@ -339,17 +350,34 @@ function makeRenderer(svg) {
     }, R.layers.edges);
 
     const text = {};
-    /* 字母层:未旋转,锚点在中点 → 任何朝向都光学居中 */
+    const label = (e.props || {}).label;
+    /* 字母层:未旋转,锚点在中点 → 任何朝向都光学居中。
+       带标注的仪表直接显示 A₁/V 这类题面称呼。 */
     if (LETTERS[e.type]) {
       const [tx, ty] = localToWorld(e, 0, 0);
       const t = svgEl('text', {
         x: tx.toFixed(2), y: ty.toFixed(2),
         class: 'sym-letter',
+        'data-edge-id': e.id,
         'text-anchor': 'middle',
         'dominant-baseline': 'central'
       }, R.layers['symbol-text']);
-      t.textContent = LETTERS[e.type];
+      t.textContent = label ? toSub(label) : LETTERS[e.type];
       text.letter = t;
+    } else if (label) {
+      /* 非仪表元件:标注画在符号外侧。滑变的滑片箭头朝上穿出,
+         要再挪远一点,否则标签会压在箭头上。 */
+      const off = e.type === T.RHEOSTAT ? -21 : -15;
+      const [tx, ty] = localToWorld(e, 0, off);
+      const t = svgEl('text', {
+        x: tx.toFixed(2), y: ty.toFixed(2),
+        class: 'sym-tag',
+        'data-edge-id': e.id,
+        'text-anchor': 'middle',
+        'dominant-baseline': 'central'
+      }, R.layers['symbol-text']);
+      t.textContent = toSub(label);
+      text.tag = t;
     }
     /* 电池正极标记「+」 */
     if (e.type === T.BATTERY) {
@@ -357,6 +385,7 @@ function makeRenderer(svg) {
       const t = svgEl('text', {
         x: px.toFixed(2), y: py.toFixed(2),
         class: 'sym-sign',
+        'data-edge-id': e.id,
         'text-anchor': 'middle',
         'dominant-baseline': 'central'
       }, R.layers['symbol-text']);
@@ -369,6 +398,7 @@ function makeRenderer(svg) {
       const t = svgEl('text', {
         x: rx.toFixed(2), y: ry.toFixed(2),
         class: 'reading-text',
+        'data-edge-id': e.id,
         'text-anchor': 'middle',
         'dominant-baseline': 'central'
       }, R.layers['symbol-text']);
