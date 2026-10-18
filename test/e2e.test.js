@@ -189,6 +189,46 @@ async function main() {
       await fresh.close()
     })
 
+    await test('电流/电子流向是三态开关,不会互相打架', async () => {
+      const fresh = await ctx.newPage()
+      await fresh.goto(base + '#/edit', { waitUntil: 'networkidle' })
+      const cur = fresh.getByRole('button', { name: '电流', exact: true })
+      const ele = fresh.getByRole('button', { name: '电子流向' })
+      const state = async () => ({
+        current: await cur.getAttribute('class'),
+        electron: await ele.getAttribute('class')
+      })
+      const on = (c) => /(^|\s)on(\s|$)/.test(c || '')
+
+      /* 初始:电流开、电子流向关 */
+      let s0 = await state()
+      if (!on(s0.current)) throw new Error('初始应显示电流')
+      if (on(s0.electron)) throw new Error('初始不该显示电子流向')
+
+      /* 点电子流向:只切到电子流向,电流按钮必须熄灭 */
+      await ele.click(); await fresh.waitForTimeout(120)
+      let s1 = await state()
+      if (!on(s1.electron)) throw new Error('点电子流向没有生效')
+      if (on(s1.current)) throw new Error('切到电子流向后电流按钮仍高亮')
+
+      /* 再点电子流向:全部关闭 */
+      await ele.click(); await fresh.waitForTimeout(120)
+      let s2 = await state()
+      if (on(s2.electron) || on(s2.current)) throw new Error('再点一次应全部关闭')
+
+      /* 点电流:恢复电流显示 */
+      await cur.click(); await fresh.waitForTimeout(120)
+      let s3 = await state()
+      if (!on(s3.current) || on(s3.electron)) throw new Error('点电流没有正确恢复')
+
+      /* 点电流(当前态):关闭 */
+      await cur.click(); await fresh.waitForTimeout(120)
+      let s4 = await state()
+      if (on(s4.current) || on(s4.electron)) throw new Error('点当前态应关闭显示')
+
+      await fresh.close()
+    })
+
     await test('分享链接往返:同一张电路', async () => {
       await page.goto(base + '#/problem/r-2024-19', { waitUntil: 'networkidle' })
       const before = await page.locator('.edge-group').count()

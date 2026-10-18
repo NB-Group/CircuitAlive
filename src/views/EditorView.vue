@@ -266,6 +266,20 @@ function toggle(layer) {
   opts.value = { ...opts.value, [layer]: !opts.value[layer] }
 }
 
+/* 电流 / 电子流向是一个三态开关:关闭 · 电流 · 电子流向。
+   两个按钮各自独立翻转时,particles 管开关、electrons 管方向,
+   点电子流向会把电流一起点亮,再点电流又把电子流向关掉,
+   状态组合出四种而用户只想要三种。这里统一成一个状态量。 */
+function setFlow(mode) {
+  const cur = !opts.value.particles ? 'off' : (opts.value.electrons ? 'electron' : 'current')
+  const next = cur === mode ? 'off' : mode
+  opts.value = {
+    ...opts.value,
+    particles: next !== 'off',
+    electrons: next === 'electron'
+  }
+}
+
 function toggleBell() {
   bellOn.value = !bellOn.value
   setBellSound(bellOn.value)
@@ -284,8 +298,8 @@ const stateText = computed(() => {
       <button class="ff-btn ghost" @click="router.push('/')">← 主页</button>
       <h1 class="title">CircuitAlive</h1>
       <nav class="layers">
-        <button class="ff-btn ghost" :class="{ on: opts.particles && !opts.electrons }" @click="toggle('particles')">电流</button>
-        <button class="ff-btn ghost" :class="{ on: opts.electrons }" @click="toggle('electrons')">电子流向</button>
+        <button class="ff-btn ghost" :class="{ on: opts.particles && !opts.electrons }" :aria-pressed="opts.particles && !opts.electrons" @click="setFlow('current')">电流</button>
+        <button class="ff-btn ghost" :class="{ on: opts.electrons }" :aria-pressed="opts.electrons" @click="setFlow('electron')">电子流向</button>
         <button class="ff-btn ghost" :class="{ on: opts.potential }" @click="toggle('potential')">电势</button>
         <button class="ff-btn ghost" :class="{ on: opts.phiLabels }" @click="toggle('phiLabels')">电势数值</button>
         <button class="ff-btn ghost" :class="{ on: opts.efield }" @click="toggle('efield')">电场</button>
