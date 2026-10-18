@@ -1,4 +1,4 @@
-/* FieldFlow · util — 共享常量与纯工具(ESM,浏览器 / Node 双端可用) */
+/* CircuitAlive · util — 共享常量与纯工具(ESM,浏览器 / Node 双端可用) */
 
 /* ---- 元件类型 ---- */
 export const T = {

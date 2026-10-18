@@ -267,7 +267,7 @@ const stateText = computed(() => {
   <div class="editor">
     <header class="topbar">
       <button class="ff-btn ghost" @click="router.push('/')">← 主页</button>
-      <h1 class="title">FieldFlow</h1>
+      <h1 class="title">CircuitAlive</h1>
       <nav class="layers">
         <button class="ff-btn ghost" :class="{ on: opts.particles && !opts.electrons }" @click="toggle('particles')">电流</button>
         <button class="ff-btn ghost" :class="{ on: opts.electrons }" @click="toggle('electrons')">电子流向</button>

@@ -1,4 +1,4 @@
-/* FieldFlow · solver 单元测试 — Node 直接运行:node test/solver.test.js
+/* CircuitAlive · solver 单元测试 — Node 直接运行:node test/solver.test.js
  * 全部为解析对照用例(手算期望值),无框架、无依赖。 */
 'use strict';
 
@@ -25,7 +25,7 @@ function approx(actual, expected, rel, msg) {
   }
 }
 
-console.log('FieldFlow solver 测试');
+console.log('CircuitAlive solver 测试');
 
 /* ---------- 构图助手 ---------- */
 function seriesCircuit() { /* 电池 3V + R1=10 + R2=20 串联(单回路矩形) */

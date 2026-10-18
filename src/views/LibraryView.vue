@@ -257,9 +257,9 @@ const lastSavedLabel = computed(() => {
   <div class="ff-lib-page ff-paper-grid">
     <header class="ff-lib-nav">
       <div class="ff-lib-wrap ff-lib-nav-inner">
-        <router-link to="/" class="ff-lib-brand" aria-label="FieldFlow 首页">
+        <router-link to="/" class="ff-lib-brand" aria-label="CircuitAlive 首页">
           <span class="brand-mark" aria-hidden="true">F</span>
-          <span class="brand-word">FieldFlow</span>
+          <span class="brand-word">CircuitAlive</span>
         </router-link>
 
         <div class="ff-lib-nav-right">

@@ -1,4 +1,4 @@
-/* FieldFlow · useLibrary · 浏览器本地的电路收藏夹
+/* CircuitAlive · useLibrary · 浏览器本地的电路收藏夹
  *
  * 存储结构(localStorage,两个键):
  *   ff.library.v1  { v: 1, items: [{ id, name, data, createdAt, updatedAt }] }

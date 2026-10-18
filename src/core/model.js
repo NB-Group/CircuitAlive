@@ -1,4 +1,4 @@
-/* FieldFlow · model — 电路数据模型(边 Map + 快照式 undo/redo,Node 可测)
+/* CircuitAlive · model — 电路数据模型(边 Map + 快照式 undo/redo,Node 可测)
  *
  * 节点不存储,由边的端点派生。边的占位规则(Falstad 手感):
  *   - 元件放到导线边上 → 替换导线;

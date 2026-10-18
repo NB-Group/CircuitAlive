@@ -1,4 +1,4 @@
-/* FieldFlow · problems — 原创模拟题库
+/* CircuitAlive · problems — 原创模拟题库
  *
  * 12 道按中考常见电学题型自编的练习题,全部标注为「原创模拟题」,
  * 不代表任何真实试卷。题面与解答中的 $...$ 由 MathText.vue 用 KaTeX 渲染。

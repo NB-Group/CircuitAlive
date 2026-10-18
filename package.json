@@ -1,5 +1,5 @@
 {
-  "name": "fieldflow",
+  "name": "circuitalive",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -20,5 +20,5 @@
     "@vitejs/plugin-vue": "^5.2.1",
     "vite": "^6.0.0"
   },
-  "description": "FieldFlow 电学实验台"
+  "description": "CircuitAlive 电学实验台"
 }

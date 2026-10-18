@@ -1,4 +1,4 @@
-/* FieldFlow · solver — 节点电压法直流求解器(纯函数,Node 可测)
+/* CircuitAlive · solver — 节点电压法直流求解器(纯函数,Node 可测)
  *
  * 物理模型:
  *  - 参与求解的边都是"电阻 + (电池的)诺顿电流源",整体是 SPD 线性系统;

@@ -1,4 +1,4 @@
-/* FieldFlow · render — SVG 场景渲染(ESM)
+/* CircuitAlive · render — SVG 场景渲染(ESM)
  *
  * 分两层:
  *   syncStructure(model)      模型变了:边/符号/结点/文字层(按 edge.id 增量调和)

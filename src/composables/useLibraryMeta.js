@@ -1,4 +1,4 @@
-/* FieldFlow · useLibraryMeta · 作品库的附加元数据
+/* CircuitAlive · useLibraryMeta · 作品库的附加元数据
  *
  * useLibrary 只存电路本身(id/name/data/时间)。收藏、查看记录和来源
  * 单独放在这里,避免改动已经稳定的存储结构:

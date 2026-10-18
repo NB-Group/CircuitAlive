@@ -1,4 +1,4 @@
-/* FieldFlow · symbols — 人教版教科书风格的电路符号(ESM)
+/* CircuitAlive · symbols — 人教版教科书风格的电路符号(ESM)
  *
  * 所有符号在局部坐标系里绘制:边从 (-20,0) 到 (+20,0),+x = 边方向 a→b。
  * render 层对 <g> 施加 rotate(angle)。

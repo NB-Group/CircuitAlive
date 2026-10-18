@@ -1,4 +1,4 @@
-/* FieldFlow · share · 电路的编码、分享链接与文件读写(纯 ESM,Node 可测)
+/* CircuitAlive · share · 电路的编码、分享链接与文件读写(纯 ESM,Node 可测)
  *
  * 编码格式(v1)
  *   文本:  "FF" + base64url(二进制体)
@@ -484,7 +484,7 @@ function fileSafeName(name) {
 export function serializeCircuit(modelOrData) {
   const data = canonicalizeCircuit(toData(modelOrData), 'share');
   return {
-    schema: 'fieldflow/circuit',
+    schema: 'circuitalive/circuit',
     v: SCHEMA_VERSION,
     wireR: data.wireR,
     edges: data.edges.map((e) => ({ id: e.id, t: e.t, a: e.a, b: e.b, p: e.p }))
@@ -536,7 +536,7 @@ export function readCircuitFile(file) {
       fail('fileJson');
     }
     if (!json || typeof json !== 'object' || Array.isArray(json)) fail('fileShape');
-    if (json.schema !== undefined && json.schema !== 'fieldflow/circuit') fail('fileShape');
+    if (json.schema !== undefined && json.schema !== 'circuitalive/circuit') fail('fileShape');
     const version = json.v !== undefined ? json.v : json.version;
     if (version === undefined) fail('fileShape');
     if (version !== SCHEMA_VERSION) fail('fileVersion', version, SCHEMA_VERSION);

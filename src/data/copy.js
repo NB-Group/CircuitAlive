@@ -1,4 +1,4 @@
-/* FieldFlow · copy · 界面上的全部中文文案
+/* CircuitAlive · copy · 界面上的全部中文文案
  *
  * 写作约定:
  * - 不用破折号和连接号,句子该断就断。
@@ -11,8 +11,8 @@
 
 export const copy = {
   app: {
-    title: 'FieldFlow 电学实验台',
-    shortTitle: 'FieldFlow',
+    title: 'CircuitAlive 电学实验台',
+    shortTitle: 'CircuitAlive',
     tagline: '画一个电路,看电流怎么流。',
     description: '在方格纸上搭直流电路,实时看到电流、电势和每个元件的读数。'
   },
@@ -48,12 +48,12 @@ export const copy = {
       '内置几个常见电路:两灯串联、两灯并联、伏安法测电阻、滑动变阻器调光、短路演示。打开一个,改改参数,看看读数怎么变。',
     startCta: '打开串联电路示例',
     footerNote:
-      'FieldFlow 把电路存在你的浏览器里,不用注册。分享链接把整个电路编进地址栏,发给同学就能打开同一张图。'
+      'CircuitAlive 把电路存在你的浏览器里,不用注册。分享链接把整个电路编进地址栏,发给同学就能打开同一张图。'
   },
 
   about: {
     title: '这是什么',
-    lead: 'FieldFlow 是一个画直流电路的工具,给初中电学用。',
+    lead: 'CircuitAlive 是一个画直流电路的工具,给初中电学用。',
     body: [
       '你在方格纸上放电池、开关、电阻、灯泡这些元件,用导线把它们连成回路。程序用节点电压法算出每个节点的电势和每条支路的电流,再把结果画出来:粒子沿导线移动,导线按电势着色,右栏列出每个元件的电压、电流、电阻和功率。',
       '每个元件的检查器里都写着它的定义式。电阻旁边写 $R = U/I$,并注明这是量度式。电压表旁边写 $U = \\varphi_+ - \\varphi_-$,读数就是两个接线柱的电势差。'
@@ -67,7 +67,7 @@ export const copy = {
     compareTitle: '和 PhET、Falstad 的区别',
     compareBody: [
       'PhET 的电路模拟覆盖从小学到大学的很多主题,配套的引导活动和教学材料很完整。Falstad 的 Circuit Simulator 擅长模拟电路,能看示波器波形和频率响应。',
-      'FieldFlow 只做初中直流电路,重点放在定义和读数上。每个元件旁边有定义式,右栏的电压和电流直接对应 $I = q/t$ 与 $U = \\varphi_A - \\varphi_B$。',
+      'CircuitAlive 只做初中直流电路,重点放在定义和读数上。每个元件旁边有定义式,右栏的电压和电流直接对应 $I = q/t$ 与 $U = \\varphi_A - \\varphi_B$。',
       '需要覆盖更多主题时,PhET 的范围更广;分析复杂的模拟电路时,Falstad 的功能更全。要把初中电学的概念理顺,这个工具的元件说明写得更细。'
     ],
     links: [
@@ -78,7 +78,7 @@ export const copy = {
 
   editor: {
     backHome: '主页',
-    title: 'FieldFlow',
+    title: 'CircuitAlive',
     layers: {
       current: '电流',
       electrons: '电子流向',
@@ -255,7 +255,7 @@ export const copy = {
     share: {
       notString: '分享码必须是文本。',
       empty: '分享码是空的。',
-      badPrefix: '这不是一个 FieldFlow 分享码。',
+      badPrefix: '这不是一个 CircuitAlive 分享码。',
       badChars: '分享码里有无法识别的字符。',
       badBody: '分享码的内容不完整。',
       badData: '电路数据不完整。',

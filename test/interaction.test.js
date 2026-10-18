@@ -1,4 +1,4 @@
-/* FieldFlow · 交互与模型回归测试 — node test/interaction.test.js
+/* CircuitAlive · 交互与模型回归测试 — node test/interaction.test.js
  *
  * 画布手势依赖 DOM,这里用最小假 DOM 桩验证与框架无关的部分:
  * 吸附/跟随布线算法、模型放置语义、开关开合、滑片拖拽、触摸手势判定。
@@ -52,7 +52,7 @@ function snapPoint(world, model) {
   return best || [gx, gy]
 }
 
-console.log('FieldFlow 交互回归测试')
+console.log('CircuitAlive 交互回归测试')
 
 test('跟随式布线:斜向拖动生成逐格直角路径', () => {
   const segs = followPath([8, 5], [11, 7])

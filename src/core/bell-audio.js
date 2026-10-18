@@ -1,4 +1,4 @@
-/* FieldFlow · bell-audio — 电铃音源(Web Audio 合成)
+/* CircuitAlive · bell-audio — 电铃音源(Web Audio 合成)
  *
  * 振幅数据由 render.js 的 bell 驱动逻辑给出(铃两端电压 / 3,截到 0~1),
  * 这里只负责把 0~1 的振幅变成声音:

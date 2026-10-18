@@ -1,4 +1,4 @@
-/* FieldFlow · problems-real — 上海中考与二模真题(电学压轴)
+/* CircuitAlive · problems-real — 上海中考与二模真题(电学压轴)
  *
  * 题干与答案按原卷整理,电路由 tools/circuit-layout.mjs 自动布局后吸附网格,
  * 逐题通过悬空端点、导线短路、求解器状态三道验证,读数与标准答案核对。

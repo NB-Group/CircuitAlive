@@ -128,9 +128,9 @@ const presetCards = [
     <!-- ---------- 顶栏 ---------- -->
     <header class="nav">
       <div class="wrap nav-inner">
-        <router-link to="/" class="brand" aria-label="FieldFlow 首页">
+        <router-link to="/" class="brand" aria-label="CircuitAlive 首页">
           <span class="brand-mark" aria-hidden="true">F</span>
-          <span class="brand-word">FieldFlow</span>
+          <span class="brand-word">CircuitAlive</span>
         </router-link>
 
         <div class="nav-right">
@@ -164,12 +164,12 @@ const presetCards = [
           </p>
 
           <h1 class="hero-title rise" style="--i: 1">
-            <span class="latin">FieldFlow</span>
-            <span class="cn">电学实验台</span>
+            <span class="latin">CircuitAlive</span>
+            <span class="cn">电路,活了</span>
           </h1>
 
           <p class="lede rise" style="--i: 2">
-            把纸上的电路题接上电:画一条导线,看电流真的流起来,电压真的落下来。
+            Make your circuit alive — 画一条导线,看电流真的流起来,电压真的落下来。
           </p>
 
           <div class="hero-actions rise" style="--i: 3">
@@ -353,7 +353,7 @@ const presetCards = [
         <p class="foot-note">
           本项目为独立开发的学习工具,题目为原创模拟题,不来自任何真实试卷。
         </p>
-        <p class="foot-mark"><span class="brand-word">FieldFlow</span><span class="foot-year ff-num">2026</span></p>
+        <p class="foot-mark"><span class="brand-word">CircuitAlive</span><span class="foot-year ff-num">2026</span></p>
       </div>
     </footer>
   </div>

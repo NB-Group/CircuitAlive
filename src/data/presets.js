@@ -1,4 +1,4 @@
-/* FieldFlow · 预置电路(元组格式 [type,x1,y1,x2,y2,props]) */
+/* CircuitAlive · 预置电路(元组格式 [type,x1,y1,x2,y2,props]) */
 
 function hRow(y, x0, x1) {
   const out = [], d = x1 > x0 ? 1 : -1;

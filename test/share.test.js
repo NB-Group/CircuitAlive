@@ -1,4 +1,4 @@
-/* FieldFlow · share 单元测试 · Node 直接运行:node test/share.test.js
+/* CircuitAlive · share 单元测试 · Node 直接运行:node test/share.test.js
  * 无框架、无依赖,只用 node:assert。 */
 'use strict';
 
@@ -93,7 +93,7 @@ function mixedCircuit() {
 
 /* ---------- 往返 ---------- */
 
-console.log('FieldFlow share 测试');
+console.log('CircuitAlive share 测试');
 
 test('SCHEMA_VERSION 为 1', () => {
   assert.equal(SCHEMA_VERSION, 1);
@@ -232,7 +232,7 @@ test('40 条边的回路:分享码长度小于 2000', () => {
   const src = rectCircuit();
   assert.equal(src.edges.length, 40, '测试电路应为 40 条边');
   const code = encodeCircuit(src);
-  const url = buildShareUrl(code, 'https://example.test/fieldflow/');
+  const url = buildShareUrl(code, 'https://example.test/circuitalive/');
   assert.ok(code.length < 500, '40 条边的分享码应很短,实际 ' + code.length);
   assert.ok(url.length < 2000, '完整链接应小于 2000 字符,实际 ' + url.length);
 });
@@ -451,7 +451,7 @@ test('往返:解码结果能直接喂给 Model.restore', () => {
 
 test('serializeCircuit:带 schema 与版本号,参数规范化', () => {
   const data = serializeCircuit(mixedCircuit());
-  assert.equal(data.schema, 'fieldflow/circuit');
+  assert.equal(data.schema, 'circuitalive/circuit');
   assert.equal(data.v, 1);
   assert.equal(data.edges.length, 12);
   assert.equal(data.edges[0].p.r, 0.2);
@@ -474,11 +474,11 @@ await testAsync('readCircuitFile:拒绝坏 JSON 与错误版本', async () => {
     (err) => err instanceof ShareError && err.code === 'fileJson'
   );
   await assert.rejects(
-    () => readCircuitFile({ text: () => Promise.resolve(JSON.stringify({ schema: 'fieldflow/circuit', v: 99, edges: [] })) }),
+    () => readCircuitFile({ text: () => Promise.resolve(JSON.stringify({ schema: 'circuitalive/circuit', v: 99, edges: [] })) }),
     (err) => err instanceof ShareError && err.code === 'fileVersion'
   );
   await assert.rejects(
-    () => readCircuitFile({ text: () => Promise.resolve(JSON.stringify({ schema: 'fieldflow/circuit', v: 1 })) }),
+    () => readCircuitFile({ text: () => Promise.resolve(JSON.stringify({ schema: 'circuitalive/circuit', v: 1 })) }),
     (err) => err instanceof ShareError && err.code === 'fileEdges'
   );
 });
