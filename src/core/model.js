@@ -177,6 +177,16 @@ Model.prototype.setProps = function (key, patch) {
   });
 };
 
+/* 不入 undo 栈的属性更新:给连续手势(滑变拖条)用,末尾自己 commit(snapshot) */
+Model.prototype.rawSetProps = function (key, patch) {
+  var e = this.edges.get(key);
+  if (!e) return false;
+  for (var k in patch) e.props[k] = patch[k];
+  this.version++;
+  bus.emit('changed');
+  return e;
+};
+
 /* 翻转极性(交换 a↔b:电池正负极对调、开关倾斜方向翻转) */
 Model.prototype.flip = function (key) {
   var self = this;

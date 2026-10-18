@@ -2,10 +2,10 @@
 /* InspectorPopover — 浮动元件检查器
  *
  * 打开时机由父层决定(长按 / 右键 / 选择工具点击);本组件负责:
- *   - 页面其余部分压暗 + 模糊(scrim,backdrop-filter: blur(6px))
+ *   - 页面其余部分模糊压暗(由画布的 inspecting 分层完成)
  *   - 面板浮在元件旁边(左右自动择边,纵向钳制在视口内)
  *   - 元件定义式(DEFS)、可编辑参数、实时 U/I/R/P
- *   - Esc / 点 scrim / 滚动 关闭;--ease-spring 入场
+ *   - Esc / 点面板外 / 滚动 关闭;--ease-spring 入场
  *
  * 事件:close · changed(参数已改,父层应重算 solution)
  */
@@ -245,9 +245,21 @@ function place() {
   const gap = 18
 
   let ax = vw / 2, ay = vh / 2
+  let bbox = null
   const e = edge.value
   const inst = render.current
-  if (e && inst) {
+
+  /* 优先用画布里抬起的克隆件自己的外框:中点 + 固定间距会让面板
+     盖住元件右半边(滑变这种宽符号尤其明显)。 */
+  const clone = document.querySelector('.ff-canvas [data-layer="overlay"] .overlay-clone.edge-group')
+  if (clone) {
+    const cr = clone.getBoundingClientRect()
+    if (cr.width > 0 || cr.height > 0) bbox = cr
+  }
+  if (bbox) {
+    ax = bbox.left + bbox.width / 2
+    ay = bbox.top + bbox.height / 2
+  } else if (e && inst) {
     const svg = document.querySelector('.ff-canvas svg.ff-stage')
     if (svg) {
       const r = svg.getBoundingClientRect()
@@ -259,19 +271,35 @@ function place() {
     }
   }
 
-  /* 右侧放不下就放左侧;两侧都挤时贴边 */
-  let left = ax + gap
-  let originX = '0%'
-  if (left + W > vw - 12) {
-    left = ax - gap - W
-    originX = '100%'
+  /* 左右择边:优先放在元件外框之外,而不是从中心线量 18px */
+  let left, top, originX = '0%', originY = '50%'
+  const rightEdge = bbox ? bbox.right : ax
+  const leftEdge = bbox ? bbox.left : ax
+  const canRight = rightEdge + gap + W <= vw - 12
+  const canLeft = leftEdge - gap - W >= 12
+
+  if (canRight || canLeft) {
+    if (canRight) {
+      left = rightEdge + gap
+    } else {
+      left = leftEdge - gap - W
+      originX = '100%'
+    }
+    top = clamp(ay - H / 2, 12, Math.max(12, vh - H - 12))
+  } else {
+    /* 窄屏(手机)两侧都放不下:改放元件上/下方 */
+    left = clamp(ax - W / 2, 12, Math.max(12, vw - W - 12))
+    const below = (bbox ? bbox.bottom : ay) + 10
+    if (below + H <= vh - 12) {
+      top = below
+      originY = '0%'
+    } else {
+      top = Math.max(12, (bbox ? bbox.top : ay) - 10 - H)
+      originY = '100%'
+    }
   }
-  left = clamp(left, 12, Math.max(12, vw - W - 12))
 
-  let top = ay - H / 2
-  top = clamp(top, 12, Math.max(12, vh - H - 12))
-
-  pos.value = { left, top, origin: originX + ' 50%' }
+  pos.value = { left, top, origin: originX + ' ' + originY }
 }
 
 /* ---------- 关闭 ---------- */
@@ -283,6 +311,12 @@ function onKey(ev) {
     ev.stopPropagation()
     close()
   }
+}
+
+/* 点面板外关闭。事件继续传给画布,所以长按另一个元件可以一次切换。 */
+function onDownOutside(ev) {
+  if (rootEl.value && ev.target instanceof Node && rootEl.value.contains(ev.target)) return
+  close()
 }
 
 function onWheelAny(ev) {
@@ -299,9 +333,12 @@ function onScrollAny(ev) {
 
 onMounted(async () => {
   await nextTick()
-  place()
+  /* 先让画布把元件克隆到 overlay,place() 才能按它的实际外框避让 */
   bus.emit('inspect', props.edgeKey)
+  await nextTick()
+  place()
   window.addEventListener('keydown', onKey, true)
+  window.addEventListener('pointerdown', onDownOutside, true)
   window.addEventListener('wheel', onWheelAny, { passive: true })
   window.addEventListener('scroll', onScrollAny, true)
   window.addEventListener('resize', place)
@@ -310,6 +347,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   bus.emit('inspect', null)
   window.removeEventListener('keydown', onKey, true)
+  window.removeEventListener('pointerdown', onDownOutside, true)
   window.removeEventListener('wheel', onWheelAny)
   window.removeEventListener('scroll', onScrollAny, true)
   window.removeEventListener('resize', place)
@@ -317,8 +355,9 @@ onBeforeUnmount(() => {
 
 watch(() => props.edgeKey, async () => {
   await nextTick()
-  place()
   bus.emit('inspect', props.edgeKey)
+  await nextTick()
+  place()
 })
 
 watch(() => props.solution, async () => {
@@ -329,7 +368,6 @@ watch(() => props.solution, async () => {
 
 <template>
   <Teleport to="body">
-    <div class="ff-insp-scrim" @pointerdown.self="close" @click.self="close"></div>
     <aside
       ref="rootEl"
       class="ff-inspector"
@@ -399,38 +437,38 @@ watch(() => props.solution, async () => {
         <!-- 计算值 -->
         <div class="ff-insp-vals">
           <template v-if="edge.type === T.BATTERY">
-            <div class="kv"><span>端电压 U</span><b>{{ U == null ? '—' : fmt(U, 'V') }}</b></div>
+            <div class="kv"><span>端电压 U</span><b>{{ U == null ? '—' : fmt(Math.abs(U), 'V') }}</b></div>
             <div class="kv"><span>电动势 E</span><b>{{ fmt(solver.emfOf(edge), 'V') }}</b></div>
             <div class="kv"><span>内阻 r</span><b>{{ fmt(solver.rOf(edge, model.wireR), 'Ω') }}</b></div>
-            <div class="kv"><span>电流 I</span><b>{{ I == null ? '—' : fmt(I, 'A') }}</b></div>
+            <div class="kv"><span>电流 I</span><b>{{ I == null ? '—' : fmt(Math.abs(I), 'A') }}</b></div>
             <div class="kv"><span>输出功率</span><b>{{ P == null ? '—' : fmt(P, 'W') }}</b></div>
           </template>
 
           <template v-else-if="edge.type === T.VOLTMETER">
             <div class="kv"><span>φ(+接线柱)</span><b>{{ sol ? fmt(sol.nodePhi.get(nodeKey(edge.b)), 'V') : '—' }}</b></div>
             <div class="kv"><span>φ(−接线柱)</span><b>{{ sol ? fmt(sol.nodePhi.get(nodeKey(edge.a)), 'V') : '—' }}</b></div>
-            <div class="kv"><span>读数 U</span><b>{{ U == null ? '—' : fmt(U, 'V') }}</b></div>
+            <div class="kv"><span>读数 U</span><b>{{ U == null ? '—' : fmt(Math.abs(U), 'V') }}</b></div>
           </template>
 
           <template v-else-if="edge.type === T.AMMETER">
-            <div class="kv"><span>电流 I</span><b>{{ I == null ? '—' : fmt(I, 'A') }}</b></div>
+            <div class="kv"><span>电流 I</span><b>{{ I == null ? '—' : fmt(Math.abs(I), 'A') }}</b></div>
             <div class="kv"><span>内阻</span><b>{{ fmt(solver.R_AM, 'Ω') }}</b></div>
           </template>
 
           <template v-else-if="edge.type === T.SWITCH">
-            <div class="kv"><span>电流 I</span><b>{{ I == null ? '—' : fmt(I || 0, 'A') }}</b></div>
-            <div class="kv"><span>两端 U</span><b>{{ U == null ? '—' : fmt(U, 'V') }}</b></div>
+            <div class="kv"><span>电流 I</span><b>{{ I == null ? '—' : fmt(Math.abs(I || 0), 'A') }}</b></div>
+            <div class="kv"><span>两端 U</span><b>{{ U == null ? '—' : fmt(Math.abs(U), 'V') }}</b></div>
           </template>
 
           <template v-else-if="edge.type === T.MOTOR || edge.type === T.BELL">
-            <div class="kv"><span>电压 U</span><b>{{ U == null ? '—' : fmt(U, 'V') }}</b></div>
-            <div class="kv"><span>电流 I</span><b>{{ I == null ? '—' : fmt(I, 'A') }}</b></div>
+            <div class="kv"><span>电压 U</span><b>{{ U == null ? '—' : fmt(Math.abs(U), 'V') }}</b></div>
+            <div class="kv"><span>电流 I</span><b>{{ I == null ? '—' : fmt(Math.abs(I), 'A') }}</b></div>
             <div class="kv"><span>功率 P</span><b>{{ P == null ? '—' : fmt(P, 'W') }}</b></div>
           </template>
 
           <template v-else>
-            <div class="kv"><span>电压 U</span><b>{{ U == null ? '—' : fmt(U, 'V') }}</b></div>
-            <div class="kv"><span>电流 I</span><b>{{ I == null ? '—' : fmt(I, 'A') }}</b></div>
+            <div class="kv"><span>电压 U</span><b>{{ U == null ? '—' : fmt(Math.abs(U), 'V') }}</b></div>
+            <div class="kv"><span>电流 I</span><b>{{ I == null ? '—' : fmt(Math.abs(I), 'A') }}</b></div>
             <div class="kv"><span>电阻 R</span><b>{{ R == null ? '—' : fmt(R, 'Ω') }}</b></div>
             <div class="kv"><span>功率 P</span><b>{{ P == null ? '—' : fmt(P, 'W') }}</b></div>
           </template>

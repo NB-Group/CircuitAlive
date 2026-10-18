@@ -229,6 +229,114 @@ async function main() {
       await fresh.close()
     })
 
+    await test('单击滑变弹出滑条,拖动实时改阻值,一次拖动一步撤销', async () => {
+      await page.goto(base + '#/problem/r-2013-22', { waitUntil: 'networkidle' })
+      await page.waitForSelector('[data-hook="wiper"]', { state: 'attached' })
+      /* 点滑变矩形本体中心(不是上方滑轨)。局部 y=0 不在 wiperGrab
+         的 -18.5..-3.5 区间里,才会走 tap-rheo 而不是拖滑片。 */
+      const group = page.locator('.edge-group', { has: page.locator('[data-hook="wiper"]') }).first()
+      const box = await group.locator('rect').first().boundingBox()
+      if (!box) throw new Error('滑变符号没有可见矩形')
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+      await page.waitForTimeout(250)
+      if (!(await page.locator('.ff-rheo').count())) throw new Error('单击滑变没有弹出滑条')
+
+      const valueEl = page.locator('.ff-rheo-value')
+      const before = (await valueEl.textContent({ timeout: 3000 })) || ''
+      /* 模拟一次真实拖动:先 pointerdown 让弹窗记下 undo 快照,
+         否则 rawSetProps 不入栈,撤销会退到上一件不相干的事 */
+      await page.locator('.ff-rheo-range').dispatchEvent('pointerdown')
+      await page.locator('.ff-rheo-range').evaluate((el) => {
+        el.value = '0.1'
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+        el.dispatchEvent(new Event('change', { bubbles: true }))
+      })
+      await page.waitForTimeout(300)
+      const after = (await valueEl.textContent({ timeout: 3000 })) || ''
+      if (before === after) throw new Error('拖滑条没有改变接入阻值: ' + before)
+      /* 读数必须是活的:电流/电压不是破折号 */
+      const reads = (await page.locator('.ff-rheo-reads').textContent()) || ''
+      if (!/I\s*[\d.]/.test(reads)) throw new Error('滑条旁没有实时电流读数: ' + reads)
+
+      /* 一次拖动只留一步撤销。点工具栏按钮算"点外面",弹窗会先关,
+         重新打开滑变看阻值是否退回拖动前。 */
+      await page.getByRole('button', { name: '撤销' }).click()
+      await page.waitForTimeout(300)
+      const box2 = await group.locator('rect').first().boundingBox()
+      await page.mouse.click(box2.x + box2.width / 2, box2.y + box2.height / 2)
+      await page.waitForTimeout(250)
+      const back = (await page.locator('.ff-rheo-value').textContent({ timeout: 3000 })) || ''
+      if (back !== before) throw new Error(`撤销后没回到拖动前: ${back} ≠ ${before}`)
+    })
+
+    await test('长按滑变仍打开完整检查器,不弹滑条', async () => {
+      await page.goto(base + '#/problem/r-2013-22', { waitUntil: 'networkidle' })
+      await page.waitForSelector('[data-hook="wiper"]', { state: 'attached' })
+      const group = page.locator('.edge-group', { has: page.locator('[data-hook="wiper"]') }).first()
+      const box = await group.locator('rect').first().boundingBox()
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.down()
+      await page.waitForTimeout(700)
+      await page.mouse.up()
+      await page.waitForTimeout(300)
+      if (!(await page.locator('.ff-inspector').count())) throw new Error('长按滑变没有打开检查器')
+      if (await page.locator('.ff-rheo').count()) throw new Error('长按滑变后滑条也弹出来了')
+    })
+
+    await test('长按导线打开导线检查器', async () => {
+      /* 独立页面,避免上一步的检查器状态干扰 */
+      const fresh = await ctx.newPage()
+      await fresh.goto(base + '#/problem/r-2013-22', { waitUntil: 'networkidle' })
+      await fresh.waitForSelector('.edge-group')
+      /* 左边那条竖直导线,key 由数据里 [0,1,0,0] 规范化而来 */
+      const wire = fresh.locator('.edge-group[data-edge-key="0,0|0,1"]').first()
+      const box = await wire.boundingBox()
+      await fresh.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await fresh.mouse.down()
+      await fresh.waitForTimeout(700)
+      await fresh.mouse.up()
+      await fresh.waitForTimeout(300)
+      const title = (await fresh.locator('.ff-inspector .ff-insp-name').first().textContent().catch(() => '')) || ''
+      if (!/导线/.test(title)) throw new Error('长按导线没有打开导线检查器,标题: ' + title)
+      await fresh.close()
+    })
+
+    await test('检查器开着时,长按另一个元件直接切换', async () => {
+      const fresh = await ctx.newPage()
+      await fresh.goto(base + '#/problem/r-2014-22', { waitUntil: 'networkidle' })
+      await fresh.waitForFunction(
+        () => [...document.querySelectorAll('.sym-tag')].some((t) => t.textContent.trim() === 'R₂'),
+        null, { timeout: 5000 }
+      )
+      const ids = await fresh.evaluate(() => {
+        const out = {}
+        for (const t of document.querySelectorAll('.sym-tag')) {
+          const k = t.textContent.trim()
+          if (k === 'R₁' || k === 'R₂') out[k] = t.getAttribute('data-edge-id')
+        }
+        return out
+      })
+      if (!ids['R₁'] || !ids['R₂']) throw new Error('找不到 R₁/R₂ 标号')
+
+      const longPress = async (label) => {
+        const g = fresh.locator(`.edge-group[data-edge-id="${ids[label]}"]`)
+        const box = await g.locator('rect').first().boundingBox()
+        await fresh.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+        await fresh.mouse.down()
+        await fresh.waitForTimeout(700)
+        await fresh.mouse.up()
+        await fresh.waitForTimeout(350)
+        return (await fresh.locator('.ff-inspector .ff-insp-name').first().textContent().catch(() => '')) || ''
+      }
+
+      const first = await longPress('R₂')
+      if (!/滑动变阻器/.test(first)) throw new Error('第一次长按没打开滑变检查器: ' + first)
+      /* 不先关掉,直接长按另一个元件:同一次手势应当完成切换 */
+      const second = await longPress('R₁')
+      if (!/电阻/.test(second) || /滑动变阻器/.test(second)) throw new Error('长按没有切换到电阻: ' + second)
+      await fresh.close()
+    })
+
     await test('分享链接往返:同一张电路', async () => {
       await page.goto(base + '#/problem/r-2024-19', { waitUntil: 'networkidle' })
       const before = await page.locator('.edge-group').count()
@@ -298,7 +406,48 @@ async function main() {
       await fresh.close()
     })
 
-    await test('触屏:画布容器禁止文字选择', async () => {
+    await test('触屏:页面不横向溢出,图层开关在手机上可见', async () => {
+    const fresh = await tctx.newPage()
+    await fresh.goto(base + '#/problem/r-2013-22', { waitUntil: 'networkidle' })
+    await fresh.waitForSelector('.stage, .ff-stage')
+    const m = await fresh.evaluate(() => ({
+      iw: window.innerWidth,
+      cw: document.documentElement.clientWidth,
+      sw: document.documentElement.scrollWidth,
+      layers: getComputedStyle(document.querySelector('.layers')).display
+    }))
+    if (m.iw !== m.cw) throw new Error(`布局视口被撑宽: innerWidth ${m.iw} ≠ ${m.cw}`)
+    if (m.sw > m.iw) throw new Error(`页面横向溢出: scrollWidth ${m.sw} > ${m.iw}`)
+    if (m.layers !== 'flex') throw new Error('手机上图层面板被隐藏了')
+    await fresh.close()
+  })
+
+  await test('触屏:轻点滑变弹滑条,长按弹检查器', async () => {
+    const fresh = await tctx.newPage()
+    await fresh.goto(base + '#/problem/r-2013-22', { waitUntil: 'networkidle' })
+    await fresh.waitForSelector('[data-hook="wiper"]', { state: 'attached' })
+    const group = fresh.locator('.edge-group', { has: fresh.locator('[data-hook="wiper"]') }).first()
+    const box = await group.locator('rect').first().boundingBox()
+    const cdp = await tctx.newCDPSession(fresh)
+    const x = box.x + box.width / 2, y = box.y + box.height / 2
+
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] })
+    await fresh.waitForTimeout(80)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await fresh.waitForTimeout(350)
+    if (!(await fresh.locator('.ff-rheo').count())) throw new Error('轻点滑变没有弹出滑条')
+    if (await fresh.locator('.ff-inspector').count()) throw new Error('轻点滑变误开了检查器')
+
+    await fresh.waitForTimeout(200)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] })
+    await fresh.waitForTimeout(750)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await fresh.waitForTimeout(400)
+    if (!(await fresh.locator('.ff-inspector').count())) throw new Error('长按滑变没有打开检查器')
+    await fresh.close()
+  })
+
+  await test('触屏:画布容器禁止文字选择', async () => {
       await tp.goto(base + '#/problem/r-2024-19', { waitUntil: 'networkidle' })
       const css = await tp.evaluate(async () => {
         const el = document.querySelector('.ff-canvas')

@@ -19,6 +19,7 @@ import { presets } from '../data/presets.js'
 import { getProblem } from '../data/problems.js'
 import MathText from '../components/MathText.vue'
 import MeterDial from '../components/MeterDial.vue'
+import RheostatPopover from '../components/RheostatPopover.vue'
 
 const props = defineProps({ theme: String, id: String })
 const emit = defineEmits(['toggle-theme'])
@@ -46,6 +47,13 @@ const bellOn = ref(bellSoundOn())
 const inspectedKey = ref(null)
 
 function onEdgeClick(key) { inspectedKey.value = key }
+
+/* 滑变单击弹窗:与完整检查器分开,调节时不被背景模糊挡住 */
+const rheoPop = ref(null)
+function onWiperOpen(p) {
+  inspectedKey.value = null
+  rheoPop.value = p
+}
 function closeInspector() { inspectedKey.value = null; selectedKey.value = null }
 const problem = ref(null)
 const showAnswer = ref(false)
@@ -208,9 +216,17 @@ onMounted(() => {
 /* 题库题目:载入题干与第一张电路图。
    必须单独成函数并 watch 路由 id —— 只写在 onMounted 里的话,
    从题目 A 点到题目 B 时组件复用,内容不会更新。 */
+/* 换题/换图时把上一张图浮着的检查器和滑条收掉:
+   否则它们会挡住新图的指针事件,而且指向的边已经不存在。 */
+function resetOverlays() {
+  inspectedKey.value = null
+  rheoPop.value = null
+}
+
 function loadProblem(id) {
   const prob = getProblem(id)
   if (!prob) return
+  resetOverlays()
   problem.value = prob
   showAnswer.value = false
   const figs = Array.isArray(prob.figures) && prob.figures.length
@@ -224,6 +240,7 @@ function loadProblem(id) {
 }
 
 watch(() => props.id, (id) => {
+  resetOverlays()
   if (id) loadProblem(id)
   else { problem.value = null }
 })
@@ -383,9 +400,19 @@ const stateText = computed(() => {
         :armed="armed"
         @select="onSelect"
         @edge-click="onEdgeClick"
+        @wiper-open="onWiperOpen"
         @placed="onPlaced"
         @changed="resolve"
         @escape="setTool('select')"
+      />
+
+      <RheostatPopover
+        v-if="rheoPop"
+        :model="model"
+        :solution="solution"
+        :edge-key="rheoPop.key"
+        :anchor="{ x: rheoPop.x, y: rheoPop.y }"
+        @close="rheoPop = null"
       />
 
       <InspectorPopover
@@ -482,6 +509,43 @@ const stateText = computed(() => {
 .va-list li { margin: 2px 0; }
 .prob-answer { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--hairline); font-size: 13px; line-height: 1.9; }
 
+/* ---- 窄屏(手机) ---------------------------------------------------
+   桌面版顶栏是一整行;390px 宽放不下时会把整页撑到 519px,
+   移动浏览器因此放大布局视口,检查器按 innerWidth 钳位就会跑出屏幕。
+   这里让顶栏换行、图层条自己横向滚动,并压缩元件栏,页面不再横向溢出。 */
+@media (max-width: 720px) {
+  .topbar {
+    flex-wrap: wrap; height: auto; min-height: 50px;
+    padding: 5px 8px; gap: 6px;
+  }
+  .title { font-size: 15px; }
+  .topbar .ff-btn { padding: 3px 7px; font-size: 11px; }
+  .layers {
+    order: 10; width: 100%; gap: 2px;
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .layers::-webkit-scrollbar { display: none; }
+  .layers .ff-btn { flex: none; }
+  .state { margin-left: 0; font-size: 11px; padding: 1px 8px; }
+
+  .palette { width: 64px; }
+  .pal-title { letter-spacing: 2px; }
+  .pal-btn { width: calc(100% - 8px); margin: 1px 4px; padding: 5px 0; }
+  .pal-name { font-size: 10px; }
+
+  .problem-strip {
+    left: 72px; right: 8px; top: 8px;
+    padding: 8px 10px; max-height: 34vh;
+  }
+  .prob-head { flex-wrap: wrap; gap: 4px 8px; }
+  .prob-title { font-size: 13px; }
+  .prob-head .ff-btn { margin-left: auto; }
+  .prob-text { font-size: 12.5px; line-height: 1.8; }
+  .va-guide { font-size: 12px; }
+}
+
 /* 保存/提示浮条:与作品库的 toast 同款,固定在画布下方 */
 .editor-tip {
   position: fixed; left: 50%; bottom: 30px; z-index: 80;
@@ -497,5 +561,9 @@ const stateText = computed(() => {
 
 @media (max-width: 900px) {
   .layers { display: none; }
+}
+/* 手机上这些开关是"电路活了"的核心,不能藏;让图层条自己横向滚 */
+@media (max-width: 720px) {
+  .layers { display: flex; }
 }
 </style>

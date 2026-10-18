@@ -26,7 +26,7 @@ const props = defineProps({
   armed: { type: Object, default: null }
 })
 
-const emit = defineEmits(['edge-click', 'select', 'changed', 'probe', 'viewport'])
+const emit = defineEmits(['edge-click', 'wiper-open', 'select', 'changed', 'probe', 'viewport'])
 
 const G = GRID
 const svgEl = ref(null)
@@ -211,8 +211,15 @@ function placeAtEdge(world) {
     hint('该边已有元件 — 先删除,或换个位置')
     return
   }
+  /* 端点排序只按字典序,不保留拖拽方向:竖放元件因此总是朝同一侧,
+     和预置里声明的方向可能正好相反,看起来就是"放反了"。
+     统一成视觉约定:横放从左到右,竖放从下到上,符号永远朝正方向;
+     要反接按 R 翻转。 */
   const ends = R.keyEnds(gkey)
-  const res = props.model.place(props.tool, ends[0], ends[1], props.armed ? props.armed.props : {})
+  let [a, b] = ends
+  if (a[1] === b[1]) { if (a[0] > b[0]) [a, b] = [b, a] }        /* 横:左→右 */
+  else { if (a[1] < b[1]) [a, b] = [b, a] }                       /* 竖:下→上 */
+  const res = props.model.place(props.tool, a, b, props.armed ? props.armed.props : {})
   if (res) {
     /* 放置只选中,不自动打开检查器:检查器由用户主动选中(单击)才出现 */
     selectKey(null)
@@ -282,6 +289,14 @@ function blockGesture(ev) {
   ev.preventDefault()
 }
 
+function onTouchStart(ev) {
+  /* 只拦选择,不拦多指:双指缩放走 pointer 流程 */
+  if (ev.touches && ev.touches.length > 1) return
+  ev.preventDefault()
+  const sel = window.getSelection && window.getSelection()
+  if (sel && sel.removeAllRanges) sel.removeAllRanges()
+}
+
 function onDown(ev) {
   if (!R) return
   /* 用户碰过画布后,后续电路变化不再自动适配视图:
@@ -330,10 +345,11 @@ function onDown(ev) {
   }
   if (ev.button !== 0) return
   /* 长按 = 打开检查器:鼠标与触摸统一,仅在选择工具下生效,
-     放置/橡皮/导线工具里长按不应弹面板;导线不长按(单击已可选中)。
-     开关的触摸开合走 tap-switch 抬手,长按定时器会吞掉它。 */
-  if (hitKey && props.tool === 'select' && !(hit && hit.type === T.WIRE)) {
-    startLongPress(ev, hitKey)
+     放置/橡皮/导线工具里长按不应弹面板。导线也长按(检查器里有
+     全局导线电阻)。开关的触摸开合走 tap-switch 抬手,长按会吞掉它。 */
+  if (hitKey && props.tool === 'select') {
+    /* 导线也支持长按:检查器里有全局导线电阻设置 */
+    startLongPress(ev, hit && hit.type === T.WIRE ? '__wires__' : hitKey)
   }
 
   /* 点开关符号中部 = 开合,与当前工具无关(橡皮除外) */
@@ -360,8 +376,10 @@ function onDown(ev) {
       capture(ev)
       return
     }
-    /* 点符号本体(非滑轨):打开浮出滑条 */
-    emit('edge-click', hitKey)
+    /* 点符号本体(非滑轨):抬手时开浮出滑条。
+       走 tap-rheo 而不是立刻派发,长按才能优先开完整检查器。 */
+    I.drag = { mode: 'tap-rheo', key: hitKey, x0: ev.clientX, y0: ev.clientY }
+    capture(ev)
     return
   }
 
@@ -449,7 +467,7 @@ function onMove(ev) {
   }
 
   /* 触摸点击类:挪动超阈值 = 滑动,取消 */
-  if (I.drag && (I.drag.mode === 'tap-place' || I.drag.mode === 'tap-switch')) {
+  if (I.drag && (I.drag.mode === 'tap-place' || I.drag.mode === 'tap-switch' || I.drag.mode === 'tap-rheo')) {
     if (Math.hypot(ev.clientX - I.drag.x0, ev.clientY - I.drag.y0) > 12) {
       I.drag = null
       clearLongPress()
@@ -529,6 +547,11 @@ function onUp(ev) {
 
   if (d.mode === 'tap-place') {
     placeAtEdge(d.world0)
+    return
+  }
+
+  if (d.mode === 'tap-rheo') {
+    emit('wiper-open', { key: d.key, x: ev.clientX, y: ev.clientY })
     return
   }
 
@@ -742,6 +765,8 @@ onMounted(async () => {
     emitViewport()
   }
 
+  /* iOS 的文字选择/呼出菜单由 touchstart 触发,pointerdown 拦不住 */
+  svgEl.value.addEventListener('touchstart', onTouchStart, { passive: false })
   /* Safari 的双指缩放走 gesture* 事件而非 pointer events,
      touch-action 拦不住,必须显式 preventDefault 才不触发页面缩放 */
   svgEl.value.addEventListener('gesturestart', blockGesture, { passive: false })
@@ -766,6 +791,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (svgEl.value) {
+    svgEl.value.removeEventListener('touchstart', onTouchStart)
     svgEl.value.removeEventListener('gesturestart', blockGesture)
     svgEl.value.removeEventListener('gesturechange', blockGesture)
     svgEl.value.removeEventListener('gestureend', blockGesture)
