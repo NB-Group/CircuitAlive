@@ -205,7 +205,7 @@ watch(() => props.anchor, () => { if (props.edgeKey) place() }, { deep: true })
   box-shadow: 0 8px 24px rgba(44, 40, 34, 0.16);
 }
 .ff-rheo-enter-active { animation: ff-rheo-in 160ms var(--ease-out) both; }
-.ff-rheo-leave-active { animation: ff-rheo-out 130ms var(--ease-out) both; pointer-events: none; }
+.ff-rheo-leave-active { animation: ff-rheo-out 190ms var(--ease-out) both; pointer-events: none; }
 @keyframes ff-rheo-out {
   from { opacity: 1; transform: none; }
   to   { opacity: 0; transform: translateY(4px) scale(0.98); }

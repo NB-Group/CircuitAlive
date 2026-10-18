@@ -546,18 +546,8 @@ const stateText = computed(() => {
   .va-guide { font-size: 12px; }
 }
 
-/* 检查器打开时,题目条和元件栏一起虚化:视线只留在元件和面板上。
-   面板是 Teleport 到 body 的,不受这里影响。 */
-.problem-strip,
-.palette {
-  transition: filter var(--dur-mid) var(--ease-out), opacity var(--dur-mid) var(--ease-out);
-}
-.editor.is-inspecting .problem-strip,
-.editor.is-inspecting .palette {
-  filter: blur(2px);
-  opacity: 0.42;
-  pointer-events: none;
-}
+/* 只模糊画布。题目条和元件栏保持清晰 —— 它们是阅读/操作区,
+   糊掉反而让人分不清"到底哪里是背景"。 */
 
 /* 保存/提示浮条:与作品库的 toast 同款,固定在画布下方 */
 .editor-tip {

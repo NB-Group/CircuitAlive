@@ -129,7 +129,6 @@ const presetCards = [
     <header class="nav">
       <div class="wrap nav-inner">
         <router-link to="/" class="brand" aria-label="CircuitAlive 首页">
-          <span class="brand-mark" aria-hidden="true">F</span>
           <span class="brand-word">CircuitAlive</span>
         </router-link>
 
@@ -403,20 +402,6 @@ const presetCards = [
   gap: 10px;
   text-decoration: none;
   color: var(--ink);
-}
-
-.brand-mark {
-  width: 23px;
-  height: 23px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--vermilion);
-  border-radius: var(--radius);
-  color: var(--vermilion);
-  font-family: var(--serif);
-  font-size: 13px;
-  font-weight: 900;
-  line-height: 1;
 }
 
 .brand-word {

@@ -142,15 +142,22 @@ function makeRenderer(svg) {
     if (!defs) defs = svgEl('defs', { class: 'ff-defs' }, svg);
     R.layers.defs = defs;
 
+    /* overlay(被检元件克隆、选中框、探针)必须留在模糊场景之外:
+       检查器打开时整张画布虚化,只有它保持清晰。 */
+    let ovRoot = svg.querySelector('g.ff-overlay-scene');
+    if (!ovRoot) ovRoot = svgEl('g', { class: 'ff-overlay-scene' }, svg);
+
     LAYER_NAMES.forEach((name) => {
       if (name === 'defs') return;
-      let g = root.querySelector(':scope > g[data-layer="' + name + '"]');
-      if (!g) g = svgEl('g', { 'data-layer': name }, root);
+      const parent = name === 'overlay' ? ovRoot : root;
+      let g = parent.querySelector(':scope > g[data-layer="' + name + '"]');
+      if (!g) g = svgEl('g', { 'data-layer': name }, parent);
       R.layers[name] = g;
     });
     /* 层级顺序固定(防止 Vue 模板顺序变动) */
-    const order = ['grid', 'underlay', 'edges', 'junctions', 'efield', 'particles', 'readings', 'symbol-text', 'overlay'];
+    const order = ['grid', 'underlay', 'edges', 'junctions', 'efield', 'particles', 'readings', 'symbol-text'];
     order.forEach((name) => root.appendChild(R.layers[name]));
+    ovRoot.appendChild(R.layers.overlay);
   }
 
   /* 网格:userSpaceOnUse pattern,跟随 viewBox 平移缩放,与吸附格点严格对齐 */
@@ -646,7 +653,15 @@ function makeRenderer(svg) {
     const layer = R.layers.particles;
     const Imax = Math.max(sol.Imax, 1e-9);
     const seen = new Set();
+    const electron = !!R.opts.electrons;
+    let changed = false;
 
+    /* 只在显示模式真的变了时改 class。每次 syncSolution 都写一遍
+       class 会让浏览器重算样式,动画期间表现为"闪一下"。 */
+    if (layer.__electron !== electron) {
+      layer.__electron = electron;
+      layer.classList.toggle('electrons', electron);
+    }
     layer.classList.toggle('dimmed', !!R.opts.potential);
 
     R.model.edges.forEach((e) => {
@@ -660,19 +675,36 @@ function makeRenderer(svg) {
 
       let p = pools.get(e.id);
       if (!p) {
-        p = { els: [], phase: [], count: 2 };
+        p = { els: [], phase: [], count: 2, radius: -1 };
         for (let i = 0; i < 2; i++) {
-          const c = svgEl('circle', { r: radius, class: 'particle' + (R.opts.electrons ? ' electron' : '') }, layer);
+          const c = svgEl('circle', { r: radius, class: 'particle' }, layer);
           p.els.push(c);
           p.phase.push(i / 2);
         }
+        p.radius = radius;
+        /* 先按当前解摆好位置,避免新建的圆点先出现在 (0,0) 一帧 */
+        placeParticles(p);
         pools.set(e.id, p);
+        changed = true;
       }
-      p.els.forEach((c) => {
-        c.setAttribute('class', 'particle' + (R.opts.electrons ? ' electron' : ''));
-        c.setAttribute('r', radius.toFixed(2));
-      });
+      /* 半径只在变化超过 0.05 时写,拖动滑条时不必每帧改属性 */
+      if (Math.abs(p.radius - radius) > 0.05) {
+        p.radius = radius;
+        p.els.forEach((c) => c.setAttribute('r', radius.toFixed(2)));
+      }
       p.speed = speed;
+      /* 电流 ↔ 电子流向切换时只翻方向;相位要一起镜像,
+         否则粒子会瞬移到对面位置,看起来就是闪一下。 */
+      if (p.dir != null && p.dir !== dir) {
+        for (let i = 0; i < p.count; i++) {
+          p.phase[i] = 1 - p.phase[i];
+          /* 端点淡出区里镜像后的相位会让透明度从 0 附近跳回 1,
+             直接补成"镜像前对应位置的透明度",切换瞬间不闪 */
+          const t = dir > 0 ? p.phase[i] : 1 - p.phase[i];
+          p.els[i].setAttribute('opacity', Math.min(1, Math.min(t, 1 - t) / 0.2).toFixed(3))
+        }
+      }
+      if (p.dir !== dir) changed = true;
       p.dir = dir;
       p.edge = e;
     });
@@ -681,10 +713,29 @@ function makeRenderer(svg) {
       if (!seen.has(id)) {
         p.els.forEach((c) => c.remove());
         pools.delete(id);
+        changed = true;
       }
     });
 
+    if (changed) placeParticlesAll();
     ensureRaf();
+  }
+
+  function placeParticlesAll() {
+    pools.forEach((p) => placeParticles(p));
+  }
+
+  function placeParticles(p) {
+    const e = p.edge;
+    if (!e) return;
+    const ax = w2(e.a[0]), ay = w2(e.a[1]), bx = w2(e.b[0]), by = w2(e.b[1]);
+    for (let i = 0; i < p.count; i++) {
+      const t = p.dir > 0 ? p.phase[i] : 1 - p.phase[i];
+      p.els[i].setAttribute('cx', lerp(ax, bx, t));
+      p.els[i].setAttribute('cy', lerp(ay, by, t));
+      const edgeFade = Math.min(1, Math.min(t, 1 - t) / 0.2);
+      p.els[i].setAttribute('opacity', edgeFade.toFixed(3));
+    }
   }
 
   function tick(now) {
@@ -707,8 +758,9 @@ function makeRenderer(svg) {
         const t = p.dir > 0 ? p.phase[i] : 1 - p.phase[i];
         p.els[i].setAttribute('cx', lerp(ax, bx, t));
         p.els[i].setAttribute('cy', lerp(ay, by, t));
-        /* 端点处淡出淡入,避免粒子瞬移造成闪烁 */
-        const edgeFade = Math.min(1, Math.min(t, 1 - t) / 0.12);
+        /* 端点处淡出淡入,避免粒子瞬移造成闪烁。
+           淡出区从 0.12 拉长到 0.2,每帧透明度变化更小。 */
+        const edgeFade = Math.min(1, Math.min(t, 1 - t) / 0.2);
         p.els[i].setAttribute('opacity', edgeFade.toFixed(3));
       }
     });
@@ -729,6 +781,10 @@ function makeRenderer(svg) {
     else R.raf = null;
   }
 
+  /* 只在"可见粒子的几何/外观真的变了"时重画。
+     滑变调阻值、开关开合都会触发 syncSolution,以前每次都会把
+     所有粒子重建成"两枚新圆点"(位置 0,0 → 首帧才摆好),
+     看起来就是整屏闪一下。现在按 id 复用元素,只在数量变化时增删。 */
   function ensureRaf() {
     if (!R.raf && !R.destroyed && !document.hidden && (pools.size || !lampsSettled())) {
       R.lastT = performance.now();

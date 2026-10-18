@@ -41,20 +41,6 @@
   color: var(--ink);
 }
 
-.ff-lib-brand .brand-mark {
-  width: 23px;
-  height: 23px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--vermilion);
-  border-radius: var(--radius);
-  color: var(--vermilion);
-  font-family: var(--serif);
-  font-size: 13px;
-  font-weight: 900;
-  line-height: 1;
-}
-
 .ff-lib-brand .brand-word {
   font-family: var(--serif);
   font-size: 16px;

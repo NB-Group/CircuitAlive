@@ -187,15 +187,20 @@ async function main() {
       const dim = await fresh.evaluate(() => {
         const edges = document.querySelector('[data-layer="edges"]')
         const strip = document.querySelector('.problem-strip')
+        const clone = document.querySelector('.overlay-clone.edge-group')
         return {
           edges: getComputedStyle(edges).filter,
           strip: strip ? getComputedStyle(strip).filter : 'none',
-          clone: document.querySelectorAll('.overlay-clone.edge-group').length
+          clone: document.querySelectorAll('.overlay-clone.edge-group').length,
+          cloneInScene: !!(clone && clone.closest('g.ff-scene'))
         }
       })
       if (!/blur/.test(dim.edges)) throw new Error('画布没有被模糊: ' + dim.edges)
-      if (!/blur/.test(dim.strip)) throw new Error('题目条没有被模糊: ' + dim.strip)
+      /* 题目条/元件栏不该被糊:用户还得读题 */
+      if (/blur/.test(dim.strip)) throw new Error('题目条被误模糊了: ' + dim.strip)
       if (!dim.clone) throw new Error('被检元件没有克隆到 overlay 层')
+      /* 克隆件必须在模糊场景之外,否则它自己也糊了 */
+      if (dim.cloneInScene) throw new Error('overlay 克隆件还在被模糊的场景里')
 
       await fresh.keyboard.press('Escape')
       await fresh.waitForTimeout(40)
@@ -204,6 +209,8 @@ async function main() {
         return el ? getComputedStyle(el).animationName : 'gone'
       })
       if (leaving !== 'ff-insp-out') throw new Error('关闭没有退场动画, animationName=' + leaving)
+      const dur = await fresh.evaluate(() => getComputedStyle(document.querySelector('.ff-inspector')).animationDuration)
+      if (parseFloat(dur) < 0.18) throw new Error('退场太快: ' + dur)
       await fresh.waitForTimeout(320)
       if (await fresh.locator('.ff-inspector').count()) throw new Error('退场动画结束后面板还在')
       await fresh.close()

@@ -142,7 +142,9 @@
 }
 
 .ff-canvas .particle { fill: var(--vermilion); }
-.ff-canvas .particle.electron { fill: var(--indigo); }
+/* 电子流向用父层 class 切换颜色:逐帧重写每个圆的 class
+   会让浏览器反复重算样式,动画看起来在闪 */
+.ff-canvas [data-layer="particles"].electrons .particle { fill: var(--indigo); }
 .ff-canvas [data-layer="particles"].dimmed { opacity: 0.4; }
 .ff-canvas [data-layer="particles"].dimmed .particle {
   stroke: var(--ink);
@@ -255,12 +257,12 @@
 /* 进场/退场由 Vue <Transition> 的类驱动,面板本身不带常驻 animation */
 .ff-insp-enter-active { animation: ff-insp-in var(--dur-mid) var(--ease-spring) both; }
 .ff-insp-leave-active {
-  animation: ff-insp-out 150ms var(--ease-out) both;
+  animation: ff-insp-out 200ms var(--ease-out) both;
   pointer-events: none;
 }
 @keyframes ff-insp-out {
   from { opacity: 1; transform: none; }
-  to   { opacity: 0; transform: translateY(5px) scale(0.975); }
+  to   { opacity: 0; transform: translateY(6px) scale(0.97); }
 }
 
 .ff-inspector.flip { transform-origin: var(--insp-origin, 50% 50%); }
@@ -444,8 +446,9 @@ html[data-theme='dark'] .ff-canvas [data-layer="underlay"] { opacity: 0.55; }
   pointer-events: none;
 }
 
-/* 检查模式:画布其余层模糊压暗作背景,只有 overlay(被检元件的克隆)
-   保持清晰。defs 不渲染不用处理;overlay 自身绝对不能进模糊组。 */
+/* 检查模式:只模糊 SVG 场景(导线/元件/粒子/读数),overlay 里的克隆件
+   留在 .ff-overlay-scene 这个不模糊的兄弟节点里。题目条、元件栏这些
+   画布外的 DOM 由 EditorView 的 .editor.is-inspecting 处理。 */
 .ff-canvas.inspecting [data-layer="grid"],
 .ff-canvas.inspecting [data-layer="underlay"],
 .ff-canvas.inspecting [data-layer="edges"],
@@ -454,9 +457,21 @@ html[data-theme='dark'] .ff-canvas [data-layer="underlay"] { opacity: 0.55; }
 .ff-canvas.inspecting [data-layer="readings"],
 .ff-canvas.inspecting [data-layer="symbol-text"],
 .ff-canvas.inspecting [data-layer="particles"] {
-  filter: blur(2.5px);
-  opacity: 0.55;
-  transition: filter var(--dur-mid) var(--ease-out), opacity var(--dur-mid) var(--ease-out);
+  filter: blur(3px);
+  opacity: 0.5;
+}
+
+/* 进出检查模式都是 200ms 缓动,和面板的进场/退场同步。
+   放在 .inspecting 规则之前,两边都生效。 */
+.ff-canvas [data-layer="grid"],
+.ff-canvas [data-layer="underlay"],
+.ff-canvas [data-layer="edges"],
+.ff-canvas [data-layer="junctions"],
+.ff-canvas [data-layer="efield"],
+.ff-canvas [data-layer="readings"],
+.ff-canvas [data-layer="symbol-text"],
+.ff-canvas [data-layer="particles"] {
+  transition: filter 200ms var(--ease-out), opacity 200ms var(--ease-out);
 }
 
 /* 被检元件克隆:轻微抬起 + 阴影,弹入 */
@@ -464,7 +479,10 @@ html[data-theme='dark'] .ff-canvas [data-layer="underlay"] { opacity: 0.55; }
 .ff-canvas .overlay-clone.line-sym {
   transform-box: fill-box;
   transform-origin: center;
-  animation: ff-insp-lift 300ms var(--ease-spring) both;
+  /* 不播放入场动画:滑变拖条每次改阻值都会重建克隆件,
+     动画重播会让元件"一跳一跳"。抬起状态用静态 transform 表达,
+     出现/消失交给面板的进场退场。 */
+  transform: translateY(-3px) scale(1.07);
 }
 .ff-canvas .overlay-clone.edge-group .sym {
   /* 纸色柔光把元件从模糊背景里"托"起来,再叠一层落影 */
@@ -472,15 +490,6 @@ html[data-theme='dark'] .ff-canvas [data-layer="underlay"] { opacity: 0.55; }
           drop-shadow(0 0 9px var(--paper))
           drop-shadow(0 3px 8px rgba(44, 40, 34, 0.34));
 }
-@keyframes ff-insp-lift {
-  from { transform: translateY(0) scale(1); }
-  to   { transform: translateY(-3px) scale(1.07); }
-}
-.ff-canvas .overlay-clone.edge-group .sym {
-  animation-fill-mode: forwards;
-}
 .ff-canvas .overlay-clone text { paint-order: stroke; stroke: var(--paper); stroke-width: 3px; }
 
-@media (prefers-reduced-motion: reduce) {
-  .ff-canvas .overlay-clone .sym { animation: none; transform: translateY(-3px) scale(1.07); }
-}
+
