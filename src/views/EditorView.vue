@@ -50,8 +50,10 @@ function onEdgeClick(key) { inspectedKey.value = key }
 
 /* 滑变单击弹窗:与完整检查器分开,调节时不被背景模糊挡住 */
 const rheoPop = ref(null)
+const rheoAnchor = ref({ x: 0, y: 0 })
 function onWiperOpen(p) {
   inspectedKey.value = null
+  rheoAnchor.value = { x: p.x, y: p.y }
   rheoPop.value = p
 }
 function closeInspector() { inspectedKey.value = null; selectedKey.value = null }
@@ -310,7 +312,7 @@ const stateText = computed(() => {
 </script>
 
 <template>
-  <div class="editor">
+  <div class="editor" :class="{ 'is-inspecting': !!inspectedKey }">
     <header class="topbar">
       <button class="ff-btn ghost" @click="router.push('/')">← 主页</button>
       <h1 class="title">CircuitAlive</h1>
@@ -407,19 +409,17 @@ const stateText = computed(() => {
       />
 
       <RheostatPopover
-        v-if="rheoPop"
         :model="model"
         :solution="solution"
-        :edge-key="rheoPop.key"
-        :anchor="{ x: rheoPop.x, y: rheoPop.y }"
+        :edge-key="rheoPop ? rheoPop.key : ''"
+        :anchor="rheoAnchor"
         @close="rheoPop = null"
       />
 
       <InspectorPopover
-        v-if="inspectedKey"
         :model="model"
         :solution="solution"
-        :edge-key="inspectedKey"
+        :edge-key="inspectedKey || null"
         @close="closeInspector"
         @changed="resolve"
       />
@@ -455,7 +455,7 @@ const stateText = computed(() => {
 .layers .on { color: var(--vermilion); background: var(--vermilion-soft); }
 .state {
   margin-left: auto; font-family: var(--mono); font-size: 12px;
-  padding: 2px 10px; border: 1px solid var(--hairline); border-radius: 10px;
+  padding: 2px 10px; border: 1px solid var(--hairline); border-radius: var(--radius);
 }
 .state.short { border-color: var(--vermilion); color: var(--vermilion); }
 .state.open { border-color: var(--amber); color: var(--amber); }
@@ -467,7 +467,7 @@ const stateText = computed(() => {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   width: calc(100% - 16px); margin: 1px 8px; padding: 6px 2px 7px;
   border: none; border-left: 2px solid transparent; background: transparent;
-  cursor: pointer; border-radius: 0 2px 2px 0; color: var(--ink);
+  cursor: pointer; border-radius: 0 var(--radius) var(--radius) 0; color: var(--ink);
   transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 .pal-btn:hover { background: rgba(44, 40, 34, 0.05); }
@@ -490,7 +490,7 @@ const stateText = computed(() => {
 .fig-tabs { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 .fig-tabs-label { font-size: 11px; color: var(--ink-faint); letter-spacing: 2px; font-family: var(--serif); }
 .fig-tab {
-  padding: 3px 10px; border: 1px solid var(--hairline); border-radius: 2px;
+  padding: 3px 10px; border: 1px solid var(--hairline); border-radius: var(--radius);
   background: transparent; color: var(--ink-soft); cursor: pointer;
   font-family: var(--mono); font-size: 11px;
   transition: border-color var(--dur-fast) ease, color var(--dur-fast) ease, background-color var(--dur-fast) ease;
@@ -544,6 +544,19 @@ const stateText = computed(() => {
   .prob-head .ff-btn { margin-left: auto; }
   .prob-text { font-size: 12.5px; line-height: 1.8; }
   .va-guide { font-size: 12px; }
+}
+
+/* 检查器打开时,题目条和元件栏一起虚化:视线只留在元件和面板上。
+   面板是 Teleport 到 body 的,不受这里影响。 */
+.problem-strip,
+.palette {
+  transition: filter var(--dur-mid) var(--ease-out), opacity var(--dur-mid) var(--ease-out);
+}
+.editor.is-inspecting .problem-strip,
+.editor.is-inspecting .palette {
+  filter: blur(2px);
+  opacity: 0.42;
+  pointer-events: none;
 }
 
 /* 保存/提示浮条:与作品库的 toast 同款,固定在画布下方 */

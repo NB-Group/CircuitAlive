@@ -44,8 +44,9 @@
   --dur-mid: 240ms;
   --dur-slow: 420ms;
 
-  --radius: 3px;
-  --radius-lg: 10px;
+  /* 统一圆角:所有矩形面(按钮、卡片、面板、输入框)共用一档 */
+  --radius: 4px;
+  --radius-lg: 4px;
 }
 
 html[data-theme='dark'] {

@@ -47,7 +47,7 @@
   display: grid;
   place-items: center;
   border: 1px solid var(--vermilion);
-  border-radius: 2px;
+  border-radius: var(--radius);
   color: var(--vermilion);
   font-family: var(--serif);
   font-size: 13px;
@@ -499,7 +499,7 @@
   z-index: 2;
   padding: 1px 7px;
   border: 1px solid var(--hairline);
-  border-radius: 2px;
+  border-radius: var(--radius);
   background: var(--paper-panel);
   color: var(--ink-faint);
   font-size: 9.5px;
@@ -636,7 +636,7 @@
   width: 104px;
   aspect-ratio: 16 / 10;
   border: 1px solid var(--hairline);
-  border-radius: 2px;
+  border-radius: var(--radius);
   background: var(--paper-inset);
   overflow: hidden;
 }

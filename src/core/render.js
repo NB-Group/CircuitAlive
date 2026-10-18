@@ -240,6 +240,33 @@ function makeRenderer(svg) {
     applyView();
   }
 
+  /* 把世界点 (wx,wy) 平移到屏幕点 (screenX,screenY)。
+     检查器打开时用它把被检元件挪到面板未覆盖的区域中央,
+     避免面板压住元件。240ms 缓动,减少视野跳变。 */
+  let focusRaf = 0;
+  function focusWorld(wx, wy, screenX, screenY) {
+    const r = svg.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    const tx = wx - (screenX - r.left) / r.width * R.view.w;
+    const ty = wy - (screenY - r.top) / r.height * R.view.h;
+    const sx = R.view.x, sy = R.view.y;
+    if (focusRaf) { cancelAnimationFrame(focusRaf); focusRaf = 0; }
+    if (Math.hypot(tx - sx, ty - sy) < 1) return;
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const dur = reduced ? 0 : 240;
+    const t0 = performance.now();
+    function step(now) {
+      const t = dur ? Math.min(1, (now - t0) / dur) : 1;
+      const e = 1 - Math.pow(1 - t, 3);
+      R.view.x = sx + (tx - sx) * e;
+      R.view.y = sy + (ty - sy) * e;
+      applyView();
+      if (t < 1 && !R.destroyed) focusRaf = requestAnimationFrame(step);
+      else focusRaf = 0;
+    }
+    focusRaf = requestAnimationFrame(step);
+  }
+
   function setView(x, y, w) {
     R.view.x = x; R.view.y = y;
     R.view.w = clamp(w, 200, 4000);
@@ -873,6 +900,7 @@ function makeRenderer(svg) {
     setView,
     zoomAt,
     panBy,
+    focusWorld,
     fitView,
     applyView,
     hitEdge,
@@ -909,6 +937,7 @@ export const render = {
   setView(x, y, w) { if (active) active.setView(x, y, w); },
   zoomAt(x, y, f) { if (active) active.zoomAt(x, y, f); },
   panBy(dx, dy) { if (active) active.panBy(dx, dy); },
+  focusWorld(wx, wy, sx, sy) { if (active) active.focusWorld(wx, wy, sx, sy); },
   fitView() { if (active) active.fitView(); },
   hitEdge(pt) { return active ? active.hitEdge(pt) : null; },
   gridEdgeAt(pt) { return active ? active.gridEdgeAt(pt) : null; },

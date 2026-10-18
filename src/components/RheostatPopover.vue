@@ -5,13 +5,13 @@
  * 电路状态变化:滑条旁边实时显示接入阻值、支路电流和两端电压。
  * 拖动走 undo 快照,松手提交一次,不污染撤销栈。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { bus, fmt } from '../core/util.js'
 
 const props = defineProps({
   model: { type: Object, required: true },
   solution: { type: Object, default: null },
-  edgeKey: { type: String, required: true },
+  edgeKey: { type: String, default: '' },
   anchor: { type: Object, default: () => ({ x: 0, y: 0 }) }
 })
 const emit = defineEmits(['close'])
@@ -19,6 +19,10 @@ const emit = defineEmits(['close'])
 const rootEl = ref(null)
 const pos = ref({ left: 0, top: 0 })
 let snap = null
+
+/* 关面板时先播退场动画,内容保留最后一份 */
+const shownKey = ref(props.edgeKey || '')
+watch(() => props.edgeKey, (k) => { if (k) shownKey.value = k })
 
 /* model 用普通 Map(shallowRef 包着),Vue 追踪不到内部变更。
    滑条位置自己拿一个 ref,由 bus 的 changed 事件(含撤销)同步;
@@ -30,7 +34,7 @@ const rmax = ref(0)
 const tick = ref(0)
 const edge = computed(() => {
   void tick.value
-  return props.model.edges.get(props.edgeKey) || null
+  return props.model.edges.get(shownKey.value) || null
 })
 
 function syncFromModel() {
@@ -110,23 +114,34 @@ function toMin() {
   snap = null
 }
 
+function close() {
+  if (!props.edgeKey) return
+  emit('close')
+}
 function onKey(ev) {
-  if (ev.key === 'Escape') { ev.stopPropagation(); emit('close') }
+  if (ev.key === 'Escape') { ev.stopPropagation(); close() }
 }
 function onDownOutside(ev) {
-  if (rootEl.value && !rootEl.value.contains(ev.target)) emit('close')
+  if (!props.edgeKey) return
+  if (rootEl.value && rootEl.value.contains(ev.target)) return
+  close()
+}
+
+function openPanel() {
+  syncFromModel()
+  nextTick(() => place())
 }
 
 let offBus = null
 onMounted(() => {
-  syncFromModel()
-  place()
+  if (props.edgeKey) openPanel()
   window.addEventListener('keydown', onKey, true)
   window.addEventListener('pointerdown', onDownOutside, true)
   offBus = bus.on('changed', () => {
     tick.value++
+    if (!props.edgeKey) return
     /* 撤销/删除把滑变拿掉了,弹窗没有对象可调 */
-    if (!props.model.edges.has(props.edgeKey)) { emit('close'); return }
+    if (!props.model.edges.has(props.edgeKey)) { close(); return }
     syncFromModel()
   })
 })
@@ -135,14 +150,22 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', onDownOutside, true)
   if (offBus) bus.off('changed', offBus)
 })
+
+watch(() => props.edgeKey, (k) => {
+  if (!k) return
+  shownKey.value = k
+  openPanel()
+})
+watch(() => props.anchor, () => { if (props.edgeKey) place() }, { deep: true })
 </script>
 
 <template>
   <Teleport to="body">
-    <div ref="rootEl" class="ff-rheo" :style="{ left: pos.left + 'px', top: pos.top + 'px' }" role="dialog" :aria-label="label() + ' 滑片'">
+    <Transition name="ff-rheo">
+      <div v-if="props.edgeKey" ref="rootEl" class="ff-rheo" :style="{ left: pos.left + 'px', top: pos.top + 'px' }" role="dialog" :aria-label="label() + ' 滑片'">
       <div class="ff-rheo-head">
         <span class="ff-rheo-title">{{ label() }}</span>
-        <button class="ff-rheo-close" type="button" aria-label="关闭" @click="emit('close')">×</button>
+        <button class="ff-rheo-close" type="button" aria-label="关闭" @click="close">×</button>
       </div>
 
       <div class="ff-rheo-value ff-num">{{ fmt(rNow, 'Ω') }}</div>
@@ -165,7 +188,8 @@ onBeforeUnmount(() => {
         <button type="button" class="ff-btn ghost" @click="toMin">调到最小</button>
         <button type="button" class="ff-btn ghost" @click="toMax">调到最大</button>
       </div>
-    </div>
+      </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -177,9 +201,14 @@ onBeforeUnmount(() => {
   padding: 10px 12px 9px;
   background: var(--paper-panel);
   border: 1px solid var(--hairline);
-  border-radius: 3px;
+  border-radius: var(--radius);
   box-shadow: 0 8px 24px rgba(44, 40, 34, 0.16);
-  animation: ff-rheo-in 160ms var(--ease-out);
+}
+.ff-rheo-enter-active { animation: ff-rheo-in 160ms var(--ease-out) both; }
+.ff-rheo-leave-active { animation: ff-rheo-out 130ms var(--ease-out) both; pointer-events: none; }
+@keyframes ff-rheo-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(4px) scale(0.98); }
 }
 @keyframes ff-rheo-in {
   from { opacity: 0; transform: translateY(4px); }

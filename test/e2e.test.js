@@ -110,6 +110,18 @@ async function main() {
       if (wires < 3) throw new Error('演示区导线数 ' + wires + ',渲染器没生效')
     })
 
+    await test('首页"开始画图"立刻进入作品库', async () => {
+      const fresh = await ctx.newPage()
+      await fresh.goto(base, { waitUntil: 'networkidle' })
+      const t0 = Date.now()
+      await fresh.locator('.hero-actions .ff-btn.primary').click()
+      await fresh.waitForSelector('.ff-lib-wrap', { timeout: 5000 })
+      const dt = Date.now() - t0
+      if (dt > 2500) throw new Error('进入作品库用了 ' + dt + 'ms')
+      if (!fresh.url().includes('#/library')) throw new Error('没有跳到作品库: ' + fresh.url())
+      await fresh.close()
+    })
+
     await test('题库卡片带来源与题号', async () => {
       await page.goto(base + '#/', { waitUntil: 'networkidle' })
       const first = await page.locator('.card .card-year').first().textContent()
@@ -157,6 +169,78 @@ async function main() {
       if (!insp) throw new Error('长按没有打开检查器')
       const inspecting = await page.locator('svg.ff-stage.inspecting').count()
       if (!inspecting) throw new Error('画布没有进入 inspecting 分层状态')
+    })
+
+    await test('检查器打开时画布真的虚化,关掉后有退场动画', async () => {
+      const fresh = await ctx.newPage()
+      await fresh.goto(base + '#/problem/r-2013-22', { waitUntil: 'networkidle' })
+      await fresh.waitForSelector('.edge-group')
+      await fresh.waitForTimeout(400)
+      const group = fresh.locator('.edge-group', { has: fresh.locator('[data-hook="wiper"]') }).first()
+      const box = await group.locator('rect').first().boundingBox()
+      await fresh.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await fresh.mouse.down()
+      await fresh.waitForTimeout(700)
+      await fresh.mouse.up()
+      await fresh.waitForTimeout(500)
+
+      const dim = await fresh.evaluate(() => {
+        const edges = document.querySelector('[data-layer="edges"]')
+        const strip = document.querySelector('.problem-strip')
+        return {
+          edges: getComputedStyle(edges).filter,
+          strip: strip ? getComputedStyle(strip).filter : 'none',
+          clone: document.querySelectorAll('.overlay-clone.edge-group').length
+        }
+      })
+      if (!/blur/.test(dim.edges)) throw new Error('画布没有被模糊: ' + dim.edges)
+      if (!/blur/.test(dim.strip)) throw new Error('题目条没有被模糊: ' + dim.strip)
+      if (!dim.clone) throw new Error('被检元件没有克隆到 overlay 层')
+
+      await fresh.keyboard.press('Escape')
+      await fresh.waitForTimeout(40)
+      const leaving = await fresh.evaluate(() => {
+        const el = document.querySelector('.ff-inspector')
+        return el ? getComputedStyle(el).animationName : 'gone'
+      })
+      if (leaving !== 'ff-insp-out') throw new Error('关闭没有退场动画, animationName=' + leaving)
+      await fresh.waitForTimeout(320)
+      if (await fresh.locator('.ff-inspector').count()) throw new Error('退场动画结束后面板还在')
+      await fresh.close()
+    })
+
+    await test('长按导线时抬起的是这根导线,面板给全局导线设置', async () => {
+      const fresh = await ctx.newPage()
+      await fresh.goto(base + '#/problem/r-2013-22', { waitUntil: 'networkidle' })
+      await fresh.waitForSelector('.edge-group')
+      await fresh.waitForTimeout(400)
+      const wire = fresh.locator('.edge-group[data-edge-key="0,0|0,1"]').first()
+      const box = await wire.boundingBox()
+      await fresh.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await fresh.mouse.down()
+      await fresh.waitForTimeout(700)
+      await fresh.mouse.up()
+      await fresh.waitForTimeout(500)
+      const title = (await fresh.locator('.ff-insp-name').first().textContent()) || ''
+      if (!/导线/.test(title)) throw new Error('面板标题不是导线: ' + title)
+      const clones = await fresh.evaluate(() => [...document.querySelectorAll('.overlay-clone.edge-group')]
+        .map((c) => c.getAttribute('data-edge-key')))
+      if (!clones.includes('0,0|0,1')) throw new Error('抬起的不是被长按的那根导线: ' + clones.join(','))
+      await fresh.close()
+    })
+
+    await test('圆角统一:按钮/卡片/面板同一档', async () => {
+      const radii = await page.evaluate(() => {
+        const vals = []
+        const pick = (sel) => {
+          const el = document.querySelector(sel)
+          if (!el) return
+          vals.push(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0)
+        }
+        document.querySelectorAll('.ff-btn').forEach((el) => vals.push(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0))
+        return [...new Set(vals)]
+      })
+      if (radii.length > 1) throw new Error('按钮圆角不一致: ' + radii.join(','))
     })
 
     await test('撤销/重做按钮随操作启用并生效', async () => {

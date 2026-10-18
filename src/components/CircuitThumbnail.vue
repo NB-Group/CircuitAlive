@@ -174,13 +174,32 @@ function build() {
   svg.dataset.fit = svg.getAttribute('viewBox')
 }
 
-onMounted(() => {
-  nextTick(build)
+/* 作品库可能有几十张卡片,每张都建一个渲染器会让首屏很慢。
+   只有进入(或接近)视口才真正构建,其余卡片保留空白占位。 */
+let io = null
+
+function observeBuild() {
+  if (!svgRef.value) return
+  if (typeof IntersectionObserver === 'undefined') { nextTick(build); return }
+  io = new IntersectionObserver((entries) => {
+    if (!entries.some((e) => e.isIntersecting)) return
+    io.disconnect()
+    io = null
+    nextTick(build)
+  }, { rootMargin: '240px' })
+  io.observe(svgRef.value)
+}
+
+onMounted(observeBuild)
+
+onBeforeUnmount(() => {
+  if (io) { io.disconnect(); io = null }
+  teardown()
 })
 
-onBeforeUnmount(teardown)
-
 watch(() => props.data, () => {
+  /* 还没进视口:等 observer 触发时自然拿到新数据 */
+  if (io) return
   nextTick(build)
 })
 </script>

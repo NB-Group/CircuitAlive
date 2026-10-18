@@ -94,6 +94,8 @@ function syncSolution() {
 function emitViewport() {
   if (!R) return
   emit('viewport', { ...R.view() })
+  /* 检查器开着时视野被拖动/缩放,面板要跟着元件重新择边 */
+  bus.emit('viewport')
 }
 
 function onModelChanged() {
@@ -348,8 +350,8 @@ function onDown(ev) {
      放置/橡皮/导线工具里长按不应弹面板。导线也长按(检查器里有
      全局导线电阻)。开关的触摸开合走 tap-switch 抬手,长按会吞掉它。 */
   if (hitKey && props.tool === 'select') {
-    /* 导线也支持长按:检查器里有全局导线电阻设置 */
-    startLongPress(ev, hit && hit.type === T.WIRE ? '__wires__' : hitKey)
+    /* 导线也支持长按:检查器里是全局导线设置,但视觉抬起的是这根导线 */
+    startLongPress(ev, hitKey)
   }
 
   /* 点开关符号中部 = 开合,与当前工具无关(橡皮除外) */
@@ -389,8 +391,7 @@ function onDown(ev) {
       /* 鼠标单击已经在上面的指针按下里同步完成,这里不重复派发
          edge-click —— 否则父层可能在同一事件里把检查器开两遍。 */
       if (hitKey) {
-        const selE = props.model.edges.get(hitKey)
-        selectKey(selE && selE.type === T.WIRE ? '__wires__' : hitKey)
+        selectKey(hitKey)
       } else {
         selectKey(null)
       }
@@ -718,8 +719,12 @@ function onKeyUp(ev) {
 
 function setInspected(key) {
   if (!svgEl.value) return
-  I.inspectKey = key && key !== '__wires__' ? key : null
+  I.inspectKey = key || null
   const active = !!I.inspectKey
+  /* CSS 的作用域是 .ff-canvas,类必须落在宿主 div 上;
+     同时给 svg 留一份,e2e/调试仍能直接查 svg.ff-stage.inspecting。 */
+  const host = svgEl.value.parentElement
+  if (host) host.classList.toggle('inspecting', active)
   svgEl.value.classList.toggle('inspecting', active)
   const ov = svgEl.value.querySelector('[data-layer="overlay"]')
   if (ov) ov.innerHTML = ''
@@ -873,7 +878,7 @@ defineExpose({
   flex: none;
   padding: 1px 10px;
   border: 1px solid var(--ink-faint);
-  border-radius: 9px;
+  border-radius: var(--radius);
   background: var(--paper);
   letter-spacing: 1px;
 }

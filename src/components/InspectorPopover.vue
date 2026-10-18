@@ -65,12 +65,23 @@ const labels = computed(() => {
   return map
 })
 
-const isWires = computed(() => props.edgeKey === '__wires__')
+/* 面板在关闭时要播 150ms 的退场动画,期间 props.edgeKey 已经是 null;
+   用 shownKey 保留最后一份内容,退场时不会闪成"元件已不存在"。 */
+const shownKey = ref(props.edgeKey || null)
+watch(() => props.edgeKey, (k) => { if (k) shownKey.value = k })
 
 const edge = computed(() => {
   void props.model.version   /* 依赖模型版本:撤销/删除/改参数后重算 */
-  if (!props.edgeKey || isWires.value) return null
-  return props.model.edges.get(props.edgeKey) || null
+  if (!shownKey.value || shownKey.value === '__wires__') return null
+  return props.model.edges.get(shownKey.value) || null
+})
+
+/* 导线检查现在拿到的是具体那根导线的 key(才能上抬),
+   但面板内容仍是全局导线设置。 */
+const isWires = computed(() => {
+  if (shownKey.value === '__wires__') return true
+  const e = edge.value
+  return !!(e && e.type === T.WIRE)
 })
 
 const title = computed(() => {
@@ -230,21 +241,23 @@ function flip() {
 
 function remove() {
   if (!edge.value) return
-  props.model.remove(props.edgeKey)
+  props.model.remove(shownKey.value)
   emit('changed')
   emit('close')
 }
 
 /* ---------- 定位 ---------- */
-function place() {
+let panned = false
+let placeRaf = 0
+
+function place(opts) {
   const el = rootEl.value
-  if (!el) return
+  if (!el || !props.edgeKey) return
   const W = el.offsetWidth || 340
   const H = el.offsetHeight || 360
   const vw = window.innerWidth, vh = window.innerHeight
   const gap = 18
 
-  let ax = vw / 2, ay = vh / 2
   let bbox = null
   const e = edge.value
   const inst = render.current
@@ -256,6 +269,8 @@ function place() {
     const cr = clone.getBoundingClientRect()
     if (cr.width > 0 || cr.height > 0) bbox = cr
   }
+
+  let ax = vw / 2, ay = vh / 2
   if (bbox) {
     ax = bbox.left + bbox.width / 2
     ay = bbox.top + bbox.height / 2
@@ -287,7 +302,7 @@ function place() {
     }
     top = clamp(ay - H / 2, 12, Math.max(12, vh - H - 12))
   } else {
-    /* 窄屏(手机)两侧都放不下:改放元件上/下方 */
+    /* 左右都放不下(手机):面板放元件上/下方 */
     left = clamp(ax - W / 2, 12, Math.max(12, vw - W - 12))
     const below = (bbox ? bbox.bottom : ay) + 10
     if (below + H <= vh - 12) {
@@ -300,11 +315,62 @@ function place() {
   }
 
   pos.value = { left, top, origin: originX + ' ' + originY }
+
+  /* 打开检查器时把被检元件平移到面板外的最大空白区中央:
+     既保证面板永远压不到元件,也符合"被选中的元件在中间凸显"的预期。
+     每次打开最多平移一次;用户自己拖动视野后只重新择边,不再抢镜头。 */
+  if (opts && opts.allowPan && !panned && bbox && inst && e) {
+    const pr = { left, top, right: left + W, bottom: top + H }
+    const covered = !(bbox.right <= pr.left || bbox.left >= pr.right ||
+                      bbox.bottom <= pr.top || bbox.top >= pr.bottom)
+    if (covered) {
+      const svg = document.querySelector('.ff-canvas svg.ff-stage')
+      if (svg) {
+        const sr = svg.getBoundingClientRect()
+        const strip = document.querySelector('.problem-strip')
+        const visTop = Math.max(sr.top + 8, strip ? strip.getBoundingClientRect().bottom + 8 : sr.top)
+        const visBot = sr.bottom - 12
+        const visLeft = sr.left + 12
+        const visRight = sr.right - 12
+        const free = [
+          { x0: visLeft, x1: Math.min(pr.left - gap, visRight), y0: visTop, y1: visBot },
+          { x0: Math.max(pr.right + gap, visLeft), x1: visRight, y0: visTop, y1: visBot },
+          { x0: visLeft, x1: visRight, y0: visTop, y1: Math.min(pr.top - gap, visBot) },
+          { x0: visLeft, x1: visRight, y0: Math.max(pr.bottom + gap, visTop), y1: visBot }
+        ].map((r) => ({ ...r, w: r.x1 - r.x0, h: r.y1 - r.y0 }))
+          .filter((r) => r.w > 140 && r.h > 120)
+          .sort((a, b) => b.w * b.h - a.w * a.h)
+        if (free.length) {
+          const f = free[0]
+          /* 最小位移:只把元件挪到空白区里离它最近的位置,
+             不做整屏重新构图,电路其余部分尽量留在原地。 */
+          const margin = 46
+          const tx = clamp(ax, f.x0 + margin, Math.max(f.x0 + margin, f.x1 - margin))
+          const ty = clamp(ay, f.y0 + margin, Math.max(f.y0 + margin, f.y1 - margin))
+          const wx = (e.a[0] + e.b[0]) / 2 * G
+          const wy = (e.a[1] + e.b[1]) / 2 * G
+          panned = true
+          inst.focusWorld(wx, wy, tx, ty)
+        }
+      }
+    }
+  }
+}
+
+function schedulePlace() {
+  if (placeRaf) return
+  placeRaf = requestAnimationFrame(() => {
+    placeRaf = 0
+    place({ allowPan: false })
+  })
 }
 
 /* ---------- 关闭 ---------- */
 
-function close() { emit('close') }
+function close() {
+  if (!props.edgeKey) return
+  emit('close')
+}
 
 function onKey(ev) {
   if (ev.key === 'Escape') {
@@ -331,45 +397,77 @@ function onScrollAny(ev) {
 
 /* ---------- 生命周期 ---------- */
 
-onMounted(async () => {
+let mounted = false
+let ro = null
+let roTarget = null
+
+async function openEdge(k) {
   await nextTick()
+  if (rootEl.value && ro && roTarget !== rootEl.value) {
+    ro.disconnect()
+    ro.observe(rootEl.value)
+    roTarget = rootEl.value
+  }
   /* 先让画布把元件克隆到 overlay,place() 才能按它的实际外框避让 */
-  bus.emit('inspect', props.edgeKey)
+  bus.emit('inspect', k)
   await nextTick()
-  place()
+  panned = false
+  place({ allowPan: true })
+}
+
+function onViewport() {
+  if (props.edgeKey) schedulePlace()
+}
+
+onMounted(() => {
+  mounted = true
+  ro = typeof ResizeObserver !== 'undefined'
+    ? new ResizeObserver(() => { if (props.edgeKey) schedulePlace() })
+    : null
+  if (props.edgeKey) openEdge(props.edgeKey)
   window.addEventListener('keydown', onKey, true)
   window.addEventListener('pointerdown', onDownOutside, true)
   window.addEventListener('wheel', onWheelAny, { passive: true })
   window.addEventListener('scroll', onScrollAny, true)
-  window.addEventListener('resize', place)
+  window.addEventListener('resize', schedulePlace)
+  bus.on('viewport', onViewport)
 })
 
 onBeforeUnmount(() => {
+  mounted = false
   bus.emit('inspect', null)
+  bus.off('viewport', onViewport)
+  if (ro) ro.disconnect()
   window.removeEventListener('keydown', onKey, true)
   window.removeEventListener('pointerdown', onDownOutside, true)
   window.removeEventListener('wheel', onWheelAny)
   window.removeEventListener('scroll', onScrollAny, true)
-  window.removeEventListener('resize', place)
+  window.removeEventListener('resize', schedulePlace)
 })
 
-watch(() => props.edgeKey, async () => {
-  await nextTick()
-  bus.emit('inspect', props.edgeKey)
-  await nextTick()
-  place()
-})
+watch(() => props.edgeKey, async (k) => {
+  if (!mounted) return
+  if (!k) {
+    /* 退场动画期间保持画布虚化,由 .inspecting 的 transition 淡回去 */
+    bus.emit('inspect', null)
+    return
+  }
+  await openEdge(k)
+}, { flush: 'post' })
 
 watch(() => props.solution, async () => {
+  if (!props.edgeKey) return
   await nextTick()
-  place()
+  place({ allowPan: false })
 })
 </script>
 
 <template>
   <Teleport to="body">
-    <aside
-      ref="rootEl"
+    <Transition name="ff-insp">
+      <aside
+        v-if="props.edgeKey"
+        ref="rootEl"
       class="ff-inspector"
       role="dialog"
       aria-modal="true"
@@ -485,7 +583,8 @@ watch(() => props.solution, async () => {
       </template>
 
       <div v-else class="ff-insp-empty">元件已不存在</div>
-    </aside>
+      </aside>
+    </Transition>
   </Teleport>
 </template>
 

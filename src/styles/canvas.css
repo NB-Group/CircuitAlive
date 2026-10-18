@@ -250,8 +250,17 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-float);
   color: var(--ink);
-  animation: ff-insp-in var(--dur-mid) var(--ease-spring);
   transform-origin: var(--insp-origin, 50% 50%);
+}
+/* 进场/退场由 Vue <Transition> 的类驱动,面板本身不带常驻 animation */
+.ff-insp-enter-active { animation: ff-insp-in var(--dur-mid) var(--ease-spring) both; }
+.ff-insp-leave-active {
+  animation: ff-insp-out 150ms var(--ease-out) both;
+  pointer-events: none;
+}
+@keyframes ff-insp-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(5px) scale(0.975); }
 }
 
 .ff-inspector.flip { transform-origin: var(--insp-origin, 50% 50%); }

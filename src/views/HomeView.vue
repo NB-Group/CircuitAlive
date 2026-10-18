@@ -173,9 +173,9 @@ const presetCards = [
           </p>
 
           <div class="hero-actions rise" style="--i: 3">
-            <button type="button" class="ff-btn primary" @click="router.push('/library')">
+            <router-link to="/library" class="ff-btn primary">
               开始画图<span class="btn-arrow" aria-hidden="true">→</span>
-            </button>
+            </router-link>
             <button type="button" class="ff-btn" @click="scrollToProblems">浏览题目</button>
           </div>
 
@@ -411,7 +411,7 @@ const presetCards = [
   display: grid;
   place-items: center;
   border: 1px solid var(--vermilion);
-  border-radius: 2px;
+  border-radius: var(--radius);
   color: var(--vermilion);
   font-family: var(--serif);
   font-size: 13px;
@@ -907,7 +907,7 @@ const presetCards = [
 
 .tag {
   padding: 2px 7px;
-  border-radius: 2px;
+  border-radius: var(--radius);
   background: var(--paper-inset);
   color: var(--ink-faint);
   font-size: 10.5px;
