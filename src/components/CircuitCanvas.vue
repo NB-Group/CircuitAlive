@@ -233,8 +233,10 @@ function startLongPress(ev, key) {
   const x0 = ev.clientX, y0 = ev.clientY
   const timer = setTimeout(() => {
     I.lp = null
-    /* 手指基本没动才算长按:打开检查器,并吞掉本次抬手 */
-    if (!I.pointers.has(ev.pointerId)) return
+    /* 手指基本没动才算长按:打开检查器,并吞掉本次抬手。
+       不按 pointerId 判断:CDP/部分浏览器把 touch 转成 pointer 时
+       会换 id,导致长按永远不触发。只看还有没有活动指针。 */
+    if (I.pointers.size === 0) return
     if (I.drag) {
       if (I.drag.snap) { props.model.restore(JSON.parse(I.drag.snap)); bus.emit('changed') }
       I.drag = null

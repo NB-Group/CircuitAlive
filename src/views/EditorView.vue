@@ -3,7 +3,7 @@
  *
  * 职责:持有 Model 与求解结果,把画布、元件栏、检查器、分析面板组装起来。
  * 具体渲染/交互逻辑在 CircuitCanvas 与 InspectorPopover 中。 */
-import { ref, shallowRef, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Model } from '../core/model.js'
 import { solver } from '../core/solver.js'
@@ -192,25 +192,40 @@ onMounted(() => {
       console.warn('分享链接解析失败', e)
     }
   } else if (!loadedFromLib && props.id) {
-    /* 题库题目:载入题干电路 */
-    const prob = getProblem(props.id)
-    if (prob) {
-      problem.value = prob
-      const figs = Array.isArray(prob.figures) && prob.figures.length
-        ? prob.figures.filter((f) => (f.kind || 'circuit') !== 'dial')
-        : (Array.isArray(prob.circuits) && prob.circuits.length
-          ? prob.circuits
-          : [{ label: '', grid: prob.circuit }])
-      activeFigure.value = 0
-      if (figs[0] && figs[0].grid) model.value.loadPreset(figs[0].grid)
-    }
+    loadProblem(props.id)
   } else if (!loadedFromLib && route.query.preset) {
     const p = presets.find(x => x.id === route.query.preset)
     if (p) model.value.loadPreset(p.tuples)
   }
   /* 无任何参数 = 空白画布,不再默认载入串联预置 */
   resolve()
+  /* 载入题目/预置本身不进 undo 栈,按钮初始应为禁用 */
+  canUndo.value = model.value.canUndo()
+  canRedo.value = model.value.canRedo()
   bus.on('changed', onChanged)
+})
+
+/* 题库题目:载入题干与第一张电路图。
+   必须单独成函数并 watch 路由 id —— 只写在 onMounted 里的话,
+   从题目 A 点到题目 B 时组件复用,内容不会更新。 */
+function loadProblem(id) {
+  const prob = getProblem(id)
+  if (!prob) return
+  problem.value = prob
+  showAnswer.value = false
+  const figs = Array.isArray(prob.figures) && prob.figures.length
+    ? prob.figures.filter((f) => (f.kind || 'circuit') !== 'dial')
+    : (Array.isArray(prob.circuits) && prob.circuits.length
+      ? prob.circuits
+      : [{ label: '', grid: prob.circuit }])
+  activeFigure.value = 0
+  model.value.loadPreset(figs[0] && figs[0].grid ? figs[0].grid : [])
+  resolve()
+}
+
+watch(() => props.id, (id) => {
+  if (id) loadProblem(id)
+  else { problem.value = null }
 })
 
 onBeforeUnmount(() => {

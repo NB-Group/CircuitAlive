@@ -26,7 +26,13 @@ jobs:
       - run: npm ci
       - run: node test/solver.test.js
       - run: node test/share.test.js
+      - run: node test/interaction.test.js
       - run: npm run build
+      # 端到端:真 Chromium 跑 dist,覆盖触屏手势与渲染
+      - name: Install Chromium for e2e
+        run: npx playwright install --with-deps chromium
+      - name: Run e2e tests
+        run: node test/e2e.test.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
