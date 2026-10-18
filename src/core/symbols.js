@@ -143,19 +143,19 @@ BUILDERS[T.MOTOR] = function (g, angle, props, showText) {
   if (showText) text(g, 0, 4, 'M', 11, angle);
 };
 
-/* 电铃:蘑菇形铃壳 + 侧边小锤(课本画法)。
-   铃壳单独成组,通电时按振幅摇动;锤贴在伞沿右下。 */
+/* 电铃:上置半圆铃壳,直径两端各向下一根线接到导线(课本画法)。
+   铃壳与两根引线单独成组,通电时按振幅摇动。 */
 BUILDERS[T.BELL] = function (g) {
-  line(g, -HALF, 0, -11, 0);
-  line(g, 11, 0, HALF, 0);
+  line(g, -HALF, 0, -9, 0);
+  line(g, 9, 0, HALF, 0);
   const bell = el('g', { class: 'bell-shake' }, g);
   bell.setAttribute('data-hook', 'bell');
   el('path', {
-    d: 'M -11 4 Q -11 -9 0 -9 Q 11 -9 11 4 Q 11 7 7 7 L -7 7 Q -11 7 -11 4 Z',
+    d: 'M -9 -3 A 9 9 0 0 1 9 -3 Z',
     class: 'fill-paper'
   }, bell);
-  line(bell, 7, 7, 13, 11, 'thin');
-  el('circle', { cx: 14.5, cy: 12, r: 2.2, class: 'fill-ink' }, bell);
+  line(bell, -9, -3, -9, 0);
+  line(bell, 9, -3, 9, 0);
 };
 
 /* 橡皮(仅元件栏图标,画布上不出现) */

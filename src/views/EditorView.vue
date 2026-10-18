@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Model } from '../core/model.js'
 import { solver } from '../core/solver.js'
 import { T, bus } from '../core/util.js'
+import { bellSoundOn, setBellSound } from '../core/bell-toggle.js'
 import { PALETTE, symbols } from '../core/symbols.js'
 import { decodeCircuit } from '../core/share.js'
 import CircuitCanvas from '../components/CircuitCanvas.vue'
@@ -35,6 +36,8 @@ const opts = ref({
   phiLabels: false,
   efield: false
 })
+/* 电铃声音开关(状态读写都在 bell-toggle 里,localStorage 持久化) */
+const bellOn = ref(bellSoundOn())
 
 /* 选中与检查分离:单击只高亮(虚框),长按/右键才浮出检查器。
    检查器打开时由 InspectorPopover 发 bus 'inspect' 给画布,
@@ -114,6 +117,9 @@ function resolve() {
 function onChanged() { resolve() }
 
 onMounted(() => {
+  /* 上次关过铃音的话,这里同步一次;bell-audio 默认开,不压就是响 */
+  if (!bellSoundOn()) setBellSound(false)
+
   /* 作品库条目优先,其次分享链接,其次预置,最后空白 */
   const libId = route.query.lib
   let loadedFromLib = false
@@ -193,6 +199,11 @@ function toggle(layer) {
   opts.value = { ...opts.value, [layer]: !opts.value[layer] }
 }
 
+function toggleBell() {
+  bellOn.value = !bellOn.value
+  setBellSound(bellOn.value)
+}
+
 const stateText = computed(() => {
   const s = solution.value
   if (!s) return ''
@@ -211,6 +222,7 @@ const stateText = computed(() => {
         <button class="ff-btn ghost" :class="{ on: opts.potential }" @click="toggle('potential')">电势</button>
         <button class="ff-btn ghost" :class="{ on: opts.phiLabels }" @click="toggle('phiLabels')">电势数值</button>
         <button class="ff-btn ghost" :class="{ on: opts.efield }" @click="toggle('efield')">电场</button>
+        <button class="ff-btn ghost" :class="{ on: bellOn }" @click="toggleBell" title="电铃声音">铃音</button>
       </nav>
       <span class="state" :class="solution?.status">{{ stateText }}</span>
       <router-link to="/library" class="ff-btn ghost">作品库</router-link>

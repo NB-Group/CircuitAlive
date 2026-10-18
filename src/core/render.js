@@ -16,6 +16,7 @@
 import { T, GRID, clamp, lerp, nodeKey, edgeKey, fmt, svgEl } from './util.js';
 import { symbols } from './symbols.js';
 import { solver } from './solver.js';
+import { createBellAudio } from './bell-audio.js';
 
 const G = GRID;
 
@@ -118,6 +119,7 @@ function makeRenderer(svg) {
     edgeEls: new Map(),   /* edgeId -> {group, sym, hit, text:{}, hooks, type, tr, key} */
     version: 0,
     opts: { particles: true, electrons: false, potential: false, phiLabels: false, efield: false },
+    bellAudio: createBellAudio(),
     view: { x: -60, y: -60, w: 920, h: 640 },
     probeKey: null,
     selKey: null,
@@ -305,6 +307,8 @@ function makeRenderer(svg) {
     buildJunctions();
     applySelection();
     applyProbeMarker();
+    /* 结构变了:被删掉的电铃不能继续响,统一收声等下一帧重设 */
+    if (R.bellAudio) R.bellAudio.allOff();
   }
 
   function removeEdgeRec(id) {
@@ -512,7 +516,9 @@ function makeRenderer(svg) {
         } else if (U != null) {
           drive = Math.abs(U);
         }
-        symbols.setRing(rec.hooks.bell, clamp(drive / 3, 0, 1));
+        const amp = clamp(drive / 3, 0, 1);
+        symbols.setRing(rec.hooks.bell, amp);
+        R.bellAudio.setLevel(e.id, amp);
       }
 
       /* 仪表读数(字母层正立;画布上显示偏转幅值,带符号值见检查器) */
@@ -821,6 +827,7 @@ function makeRenderer(svg) {
 
   function destroy() {
     R.destroyed = true;
+    if (R.bellAudio) R.bellAudio.dispose();
     if (R.raf) cancelAnimationFrame(R.raf);
     document.removeEventListener('visibilitychange', onVisibility);
     if (ro) ro.disconnect();
