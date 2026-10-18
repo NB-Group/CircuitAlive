@@ -145,7 +145,22 @@ function resolve() {
   solution.value = sol
 }
 
-function onChanged() { resolve() }
+function onChanged() {
+  resolve()
+  canUndo.value = model.value.canUndo()
+  canRedo.value = model.value.canRedo()
+}
+
+/* 撤销/重做:键盘 Ctrl+Z / Ctrl+Shift+Z 在画布里处理;
+   这两个按钮给触屏用(手机上没有键盘) */
+const canUndo = ref(false)
+const canRedo = ref(false)
+function doUndo() {
+  if (model.value.undo()) showTip('已撤销')
+}
+function doRedo() {
+  if (model.value.redo()) showTip('已重做')
+}
 
 onMounted(() => {
   /* 上次关过铃音的话,这里同步一次;bell-audio 默认开,不压就是响 */
@@ -262,6 +277,8 @@ const stateText = computed(() => {
         <button class="ff-btn ghost" :class="{ on: bellOn }" @click="toggleBell" title="电铃声音">铃音</button>
       </nav>
       <span class="state" :class="solution?.status">{{ stateText }}</span>
+      <button class="ff-btn ghost" :disabled="!canUndo" :title="'撤销 (Ctrl+Z)'" :aria-label="'撤销'" @click="doUndo">撤销</button>
+      <button class="ff-btn ghost" :disabled="!canRedo" :title="'重做 (Ctrl+Shift+Z)'" :aria-label="'重做'" @click="doRedo">重做</button>
       <router-link to="/library" class="ff-btn ghost">作品库</router-link>
       <button class="ff-btn" @click="openSave">保存</button>
       <button class="ff-btn ghost" @click="emit('toggle-theme')">{{ theme === 'dark' ? '浅色' : '深色' }}</button>

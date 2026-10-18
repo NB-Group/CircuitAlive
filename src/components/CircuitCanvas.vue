@@ -101,7 +101,7 @@ function onModelChanged() {
   /* 结构层重建会换掉新的符号组;检查中要重新克隆,否则 overlay 里是旧元件 */
   if (I.inspectKey) setInspected(I.inspectKey)
   /* 首次拿到非空电路(父层 mounted 里载入预置)时补一次适配视图 */
-  if (!fittedNonEmpty && props.model.edges.size) {
+  if (!fittedNonEmpty && !I.touched && props.model.edges.size) {
     fittedNonEmpty = true
     /* 等一帧:题目浮层和画布在同一轮里出现,此刻量不到它的高度 */
     requestAnimationFrame(() => {
@@ -240,6 +240,8 @@ function startLongPress(ev, key) {
       I.drag = null
     }
     clearGhost()
+    const sel2 = window.getSelection && window.getSelection()
+    if (sel2 && sel2.removeAllRanges) sel2.removeAllRanges()
     selectKey(key)
     emit('edge-click', key)
     hint('长按打开元件检查器')
@@ -274,8 +276,17 @@ function cancelDrag() {
   clearGhost()
 }
 
+function blockGesture(ev) {
+  ev.preventDefault()
+}
+
 function onDown(ev) {
   if (!R) return
+  /* 用户碰过画布后,后续电路变化不再自动适配视图:
+     空画布上放下第一个元件时的 fitView 会把视野猛地拉近,
+     触屏上像"突然放大"。外部载入(题库/分享链接/预置)不经过
+     指针,自动适配照常。 */
+  I.touched = true
   I.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY })
 
   /* 双指:进入捏合/平移,回滚未完成的单指手势(拖画/拖擦/滑片) */
@@ -296,6 +307,12 @@ function onDown(ev) {
   const hitKey = R.hitEdge(world)
   const hit = hitKey ? props.model.edges.get(hitKey) : null
   const touch = ev.pointerType === 'touch' || ev.pointerType === 'pen'
+  if (touch) {
+    /* 长按会触发 iOS 的文字选择/呼出菜单;按住期间清掉并拦下 */
+    ev.preventDefault()
+    const sel = window.getSelection && window.getSelection()
+    if (sel && sel.removeAllRanges) sel.removeAllRanges()
+  }
 
   /* 右键:命中元件 → 打开检查器;空白处 → 平移 */
   if (ev.button === 2) {
@@ -625,7 +642,9 @@ function onKeyDown(ev) {
   }
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') {
     ev.preventDefault()
-    props.model.undo()
+    /* Shift+Z 是重做;先判 shift,否则永远落进撤销分支 */
+    if (ev.shiftKey) props.model.redo()
+    else props.model.undo()
     return
   }
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') {
@@ -721,6 +740,11 @@ onMounted(async () => {
     emitViewport()
   }
 
+  /* Safari 的双指缩放走 gesture* 事件而非 pointer events,
+     touch-action 拦不住,必须显式 preventDefault 才不触发页面缩放 */
+  svgEl.value.addEventListener('gesturestart', blockGesture, { passive: false })
+  svgEl.value.addEventListener('gesturechange', blockGesture, { passive: false })
+  svgEl.value.addEventListener('gestureend', blockGesture, { passive: false })
   svgEl.value.addEventListener('pointerdown', onDown)
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUp)
@@ -740,6 +764,9 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (svgEl.value) {
+    svgEl.value.removeEventListener('gesturestart', blockGesture)
+    svgEl.value.removeEventListener('gesturechange', blockGesture)
+    svgEl.value.removeEventListener('gestureend', blockGesture)
     svgEl.value.removeEventListener('pointerdown', onDown)
     svgEl.value.removeEventListener('dblclick', onDblClick)
     svgEl.value.removeEventListener('wheel', onWheel)

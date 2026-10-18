@@ -11,6 +11,10 @@
   height: 100%;
   overflow: hidden;
   background-color: var(--paper);
+  /* iOS 长按元件时的文字选择与呼出菜单都在这里拦 */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   /* 网格由 SVG <pattern> 绘制,随视图平移/缩放(见 render.js gridPattern) */
 }
 
