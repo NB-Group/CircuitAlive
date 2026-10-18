@@ -18,6 +18,7 @@ import { useLibrary } from '../composables/useLibrary.js'
 import { presets } from '../data/presets.js'
 import { getProblem } from '../data/problems.js'
 import MathText from '../components/MathText.vue'
+import MeterDial from '../components/MeterDial.vue'
 
 const props = defineProps({ theme: String, id: String })
 const emit = defineEmits(['toggle-theme'])
@@ -48,6 +49,36 @@ function onEdgeClick(key) { inspectedKey.value = key }
 function closeInspector() { inspectedKey.value = null; selectedKey.value = null }
 const problem = ref(null)
 const showAnswer = ref(false)
+/* 题目的图分两类:
+     kind: 'circuit' — 电路图,画布上可交互,多于一张时给切换条
+     kind: 'dial'    — 表盘图,只在题目条里静态渲染
+   老数据没有 figures 字段,按单张 circuit 退化。 */
+const activeFigure = ref(0)
+const problemFigures = computed(() => {
+  const p = problem.value
+  if (!p) return []
+  if (Array.isArray(p.figures) && p.figures.length) {
+    return p.figures.map((f) => ({ kind: f.kind || 'circuit', ...f }))
+  }
+  if (Array.isArray(p.circuits) && p.circuits.length) {
+    return p.circuits.map((c) => ({ kind: 'circuit', ...c }))
+  }
+  if (Array.isArray(p.circuit) && p.circuit.length) {
+    return [{ kind: 'circuit', label: '', grid: p.circuit }]
+  }
+  return []
+})
+const circuitFigures = computed(() => problemFigures.value.filter((f) => f.kind !== 'dial'))
+const dialFigures = computed(() => problemFigures.value.filter((f) => f.kind === 'dial'))
+
+function loadFigure(i) {
+  const figs = circuitFigures.value
+  if (!figs.length) return
+  const k = Math.max(0, Math.min(figs.length - 1, i))
+  activeFigure.value = k
+  model.value.loadPreset(figs[k].grid)
+  resolve()
+}
 
 /* ---------- 作品库 ---------- */
 const lib = useLibrary()
@@ -150,7 +181,13 @@ onMounted(() => {
     const prob = getProblem(props.id)
     if (prob) {
       problem.value = prob
-      model.value.loadPreset(prob.circuit)
+      const figs = Array.isArray(prob.figures) && prob.figures.length
+        ? prob.figures.filter((f) => (f.kind || 'circuit') !== 'dial')
+        : (Array.isArray(prob.circuits) && prob.circuits.length
+          ? prob.circuits
+          : [{ label: '', grid: prob.circuit }])
+      activeFigure.value = 0
+      if (figs[0] && figs[0].grid) model.value.loadPreset(figs[0].grid)
     }
   } else if (!loadedFromLib && route.query.preset) {
     const p = presets.find(x => x.id === route.query.preset)
@@ -254,6 +291,28 @@ const stateText = computed(() => {
           <button class="ff-btn ghost" @click="showAnswer = !showAnswer">{{ showAnswer ? '收起解析' : '查看解析' }}</button>
         </div>
         <MathText class="prob-text" :text="problem.statement" />
+        <div v-if="circuitFigures.length > 1" class="fig-tabs" role="group" aria-label="电路图切换">
+          <span class="fig-tabs-label">电路图</span>
+          <button
+            v-for="(f, i) in circuitFigures"
+            :key="i"
+            type="button"
+            class="fig-tab"
+            :class="{ on: activeFigure === i }"
+            :aria-pressed="activeFigure === i"
+            @click="loadFigure(i)"
+          >{{ f.label || ('图 ' + (i + 1)) }}</button>
+        </div>
+        <div v-if="dialFigures.length" class="fig-dials">
+          <MeterDial
+            v-for="(f, i) in dialFigures"
+            :key="'d' + i"
+            :meter="f.meter"
+            :range="f.range"
+            :value="f.value"
+            :label="f.label"
+          />
+        </div>
         <div v-if="problem.type === '伏安法'" class="va-guide">
           <div class="va-title">伏安法测电阻 · 实验要点</div>
           <MathText text="用电压表测出电阻两端的电压 $U$,用电流表测出通过它的电流 $I$,由 $R = \\frac{U}{I}$ 求出阻值。" />
@@ -355,6 +414,17 @@ const stateText = computed(() => {
 .prob-title { font-family: var(--serif); font-weight: 700; font-size: 14px; }
 .prob-head .ff-btn { margin-left: auto; }
 .prob-src { font-size: 11px; color: var(--ink-faint); font-family: var(--mono); }
+.fig-tabs { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.fig-tabs-label { font-size: 11px; color: var(--ink-faint); letter-spacing: 2px; font-family: var(--serif); }
+.fig-tab {
+  padding: 3px 10px; border: 1px solid var(--hairline); border-radius: 2px;
+  background: transparent; color: var(--ink-soft); cursor: pointer;
+  font-family: var(--mono); font-size: 11px;
+  transition: border-color var(--dur-fast) ease, color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+}
+.fig-tab:hover { border-color: var(--ink-faint); color: var(--ink); }
+.fig-tab.on { border-color: var(--vermilion); color: var(--vermilion); background: rgba(200, 69, 31, 0.06); }
+.fig-dials { display: flex; gap: 18px; margin-top: 10px; flex-wrap: wrap; }
 .prob-text { font-size: 13px; line-height: 1.9; }
 .va-guide {
   margin-top: 10px; padding: 8px 12px;
