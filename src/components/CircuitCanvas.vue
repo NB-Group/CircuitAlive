@@ -367,8 +367,9 @@ function onDown(ev) {
     }
   }
 
-  /* 滑变:点符号 = 选中并弹出滑条;拖滑轨 = 直接调阻值;滚轮 = 微调 */
-  if (hit && hit.type === T.RHEOSTAT) {
+  /* 滑变:点符号 = 选中并弹出滑条;拖滑轨 = 直接调阻值;滚轮 = 微调。
+     橡皮除外,否则点滑变中心永远删不掉它。 */
+  if (hit && hit.type === T.RHEOSTAT && props.tool !== 'eraser') {
     selectKey(hitKey)
     if (wiperGrab(hit, world)) {
       I.drag = { mode: 'wiper', edge: hit, key: hitKey, snap: props.model.serializeStr(), moved: false }
