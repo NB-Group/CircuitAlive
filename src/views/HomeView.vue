@@ -173,8 +173,8 @@ const presetCards = [
           </p>
 
           <div class="hero-actions rise" style="--i: 3">
-            <button type="button" class="ff-btn primary" @click="router.push('/edit')">
-              新建电路<span class="btn-arrow" aria-hidden="true">→</span>
+            <button type="button" class="ff-btn primary" @click="router.push('/library')">
+              开始画图<span class="btn-arrow" aria-hidden="true">→</span>
             </button>
             <button type="button" class="ff-btn" @click="scrollToProblems">浏览题目</button>
           </div>
