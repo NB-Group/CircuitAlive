@@ -721,12 +721,13 @@ function setInspected(key) {
   if (!svgEl.value) return
   I.inspectKey = key || null
   const active = !!I.inspectKey
-  /* CSS 的作用域是 .ff-canvas,类必须落在宿主 div 上;
+  /* CSS 的作用域是 .ff-canvas(不是包住 svg 的 .ff-scene-wrap),
      同时给 svg 留一份,e2e/调试仍能直接查 svg.ff-stage.inspecting。 */
-  const host = svgEl.value.parentElement
+  const host = svgEl.value.closest('.ff-canvas')
   if (host) host.classList.toggle('inspecting', active)
   svgEl.value.classList.toggle('inspecting', active)
-  const ov = svgEl.value.querySelector('[data-layer="overlay"]')
+  /* overlay 现在挂在独立的 svg.ff-overlay-stage 里(不参与模糊) */
+  const ov = R ? R.overlay() : svgEl.value.querySelector('[data-layer="overlay"]')
   if (ov) ov.innerHTML = ''
   if (!active) return
   const edge = props.model.edges.get(key)

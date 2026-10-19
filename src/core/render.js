@@ -125,12 +125,16 @@ function makeRenderer(svg) {
     selKey: null,
     raf: null,
     lastT: 0,
-    destroyed: false
+    destroyed: false,
+    pcanvas: null,   /* 粒子 canvas(由宿主组件提供) */
+    pctx: null,
+    pdpr: 1,
+    prect: null     /* 最近一次与 svg 对齐时的屏幕矩形 */
   };
 
   /* ---------- 图层 ---------- */
 
-  const LAYER_NAMES = ['defs', 'grid', 'underlay', 'edges', 'junctions', 'efield', 'readings', 'symbol-text', 'particles', 'overlay'];
+  const LAYER_NAMES = ['defs', 'grid', 'underlay', 'edges', 'junctions', 'efield', 'readings', 'symbol-text', 'overlay'];
 
   function ensureLayers() {
     let root = svg.querySelector('g.ff-scene');
@@ -142,10 +146,34 @@ function makeRenderer(svg) {
     if (!defs) defs = svgEl('defs', { class: 'ff-defs' }, svg);
     R.layers.defs = defs;
 
-    /* overlay(被检元件克隆、选中框、探针)必须留在模糊场景之外:
-       检查器打开时整张画布虚化,只有它保持清晰。 */
-    let ovRoot = svg.querySelector('g.ff-overlay-scene');
-    if (!ovRoot) ovRoot = svgEl('g', { class: 'ff-overlay-scene' }, svg);
+    /* iOS Safari 对 <g> 的 CSS filter 支持很差,模糊必须落在 HTML 容器上。
+       结构:
+         .ff-canvas
+           div.ff-scene-wrap      ← 检查器打开时被模糊(含 svg + 粒子 canvas)
+             svg.ff-stage
+             canvas.ff-particles
+           svg.ff-overlay-stage   ← 被检元件克隆,保持清晰
+    */
+    const host = svg.parentElement;
+    let wrap = host.querySelector(':scope > .ff-scene-wrap');
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'ff-scene-wrap';
+      host.insertBefore(wrap, svg);
+      wrap.appendChild(svg);
+    }
+    R.wrap = wrap;
+
+    let ovSvg = host.querySelector(':scope > svg.ff-overlay-stage');
+    if (!ovSvg) {
+      ovSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      ovSvg.setAttribute('class', 'ff-overlay-stage');
+      ovSvg.setAttribute('aria-hidden', 'true');
+      host.appendChild(ovSvg);
+    }
+    R.ovSvg = ovSvg;
+    let ovRoot = ovSvg.querySelector('g.ff-overlay-scene');
+    if (!ovRoot) ovRoot = svgEl('g', { class: 'ff-overlay-scene' }, ovSvg);
 
     LAYER_NAMES.forEach((name) => {
       if (name === 'defs') return;
@@ -155,7 +183,7 @@ function makeRenderer(svg) {
       R.layers[name] = g;
     });
     /* 层级顺序固定(防止 Vue 模板顺序变动) */
-    const order = ['grid', 'underlay', 'edges', 'junctions', 'efield', 'particles', 'readings', 'symbol-text'];
+    const order = ['grid', 'underlay', 'edges', 'junctions', 'efield', 'readings', 'symbol-text'];
     order.forEach((name) => root.appendChild(R.layers[name]));
     ovRoot.appendChild(R.layers.overlay);
   }
@@ -220,7 +248,9 @@ function makeRenderer(svg) {
     if (r.width > 1 && r.height > 1) {
       R.view.h = R.view.w * (r.height / r.width);
     }
-    svg.setAttribute('viewBox', R.view.x + ' ' + R.view.y + ' ' + R.view.w + ' ' + R.view.h);
+    const vb = R.view.x + ' ' + R.view.y + ' ' + R.view.w + ' ' + R.view.h;
+    svg.setAttribute('viewBox', vb);
+    if (R.ovSvg) R.ovSvg.setAttribute('viewBox', vb);
   }
 
   function screenToWorld(clientX, clientY) {
@@ -647,95 +677,172 @@ function makeRenderer(svg) {
     return ok;
   }
 
+  /* ---------- 电流粒子:合成到一张 2D <canvas> ----------
+   * SVG 圆逐帧改 cx/cy/opacity 在 iOS Safari 上会整层重绘,且端点淡出
+   * 是分段线性的,看起来"规律地闪"。现在:
+   *   - 离屏 sprite(径向渐变)一次性画进与 SVG 同屏位/同尺寸的 canvas
+   *   - 每帧 clear + drawImage,不写任何 DOM
+   *   - 端点淡出用余弦,两端导数为 0
+   * canvas 位于 .ff-canvas 内、SVG 之上;模糊由 CSS 加在它身上。 */
+
+  const SPRITE = 64;
+  let spriteCache = null;
+
+  function makeSprite(cssColor) {
+    const c = document.createElement('canvas');
+    c.width = c.height = SPRITE;
+    const g = c.getContext('2d');
+    const r = SPRITE / 2;
+    const grad = g.createRadialGradient(r, r, 0, r, r, r);
+    grad.addColorStop(0, cssColor);
+    grad.addColorStop(0.5, cssColor);
+    grad.addColorStop(0.78, cssColor);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.beginPath(); g.arc(r, r, r, 0, Math.PI * 2); g.fill();
+    return c;
+  }
+
+  function particleSprites() {
+    if (spriteCache) return spriteCache;
+    const cs = getComputedStyle(document.documentElement);
+    const red = (cs.getPropertyValue('--vermilion') || '#c8451f').trim() || '#c8451f';
+    const blue = (cs.getPropertyValue('--indigo') || '#2f62a8').trim() || '#2f62a8';
+    spriteCache = { current: makeSprite(red), electron: makeSprite(blue) };
+    return spriteCache;
+  }
+
+  /* canvas 的 CSS 位置与 SVG 完全重合,分辨率按 devicePixelRatio 放大 */
+  function sizeParticleCanvas() {
+    const c = R.pcanvas;
+    if (!c) return;
+    if (!R.pctx) R.pctx = c.getContext('2d');
+    const r = svg.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    const hostR = c.parentElement.getBoundingClientRect();
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    c.style.width = r.width + 'px';
+    c.style.height = r.height + 'px';
+    c.style.left = (r.left - hostR.left) + 'px';
+    c.style.top = (r.top - hostR.top) + 'px';
+    R.pdpr = dpr;
+    R.prect = r;
+  }
+
+  /* 宿主组件把 canvas 交进来 */
+  function bindParticleCanvas(el) {
+    R.pcanvas = el || null;
+    R.pctx = null;
+    if (el) { R.pctx = el.getContext('2d'); sizeParticleCanvas(); }
+    if (R.sol) syncParticles();
+  }
+
+  /* 没有现成 canvas 时自己建一张:首页演示区等直接 createRenderer 的地方
+     不用改模板。宿主需要 position:relative(.ff-canvas / .hero-engine 都是)。 */
+  function ensureParticleCanvas() {
+    if (R.pcanvas) return;
+    const parent = R.wrap || svg.parentElement;
+    if (!parent) return;
+    const c = document.createElement('canvas');
+    c.className = 'ff-particles';
+    c.setAttribute('aria-hidden', 'true');
+    parent.appendChild(c);
+    bindParticleCanvas(c);
+  }
+
   function syncParticles() {
     const sol = R.sol;
     if (!sol) return;
-    const layer = R.layers.particles;
-    const Imax = Math.max(sol.Imax, 1e-9);
-    const seen = new Set();
+    const c = R.pcanvas;
     const electron = !!R.opts.electrons;
-    let changed = false;
 
-    /* 只在显示模式真的变了时改 class。每次 syncSolution 都写一遍
-       class 会让浏览器重算样式,动画期间表现为"闪一下"。 */
-    if (layer.__electron !== electron) {
-      layer.__electron = electron;
-      layer.classList.toggle('electrons', electron);
+    if (c) {
+      /* 只在不一致时改 class,避免每帧重算样式 */
+      if (c.__electron !== electron) { c.__electron = electron; c.classList.toggle('electrons', electron); }
+      c.classList.toggle('dimmed', !!R.opts.potential);
+      c.hidden = !R.opts.particles;
     }
-    layer.classList.toggle('dimmed', !!R.opts.potential);
 
+    const seen = new Set();
     R.model.edges.forEach((e) => {
       const I = sol.edgeI.get(e.id);
       if (!R.opts.particles || I == null || I === 0) return;
       seen.add(e.id);
-      const ratio = Math.abs(I) / Imax;
-      const speed = 58;
-      const dir = (I > 0 ? 1 : -1) * (R.opts.electrons ? -1 : 1);
+      const ratio = Math.abs(I) / Math.max(sol.Imax, 1e-9);
+      const dir = (I > 0 ? 1 : -1) * (electron ? -1 : 1);
       const radius = 1.9 + 1.9 * ratio;
 
       let p = pools.get(e.id);
       if (!p) {
-        p = { els: [], phase: [], count: 2, radius: -1 };
-        for (let i = 0; i < 2; i++) {
-          const c = svgEl('circle', { r: radius, class: 'particle' }, layer);
-          p.els.push(c);
-          p.phase.push(i / 2);
-        }
-        p.radius = radius;
-        /* 先按当前解摆好位置,避免新建的圆点先出现在 (0,0) 一帧 */
-        placeParticles(p);
+        /* 每条边 4 个粒子:端点上相邻粒子亮度互补,单条边总亮度恒定。
+           每条边再加一个由 id 决定的固定相位偏移,避免所有边在结点处
+           同时淡入淡出 —— 各边同步时整张电路会一起明暗呼吸,
+           这就是"规律闪烁"的来源。 */
+        const n = 4;
+        const offset = ((Number(e.id) || 1) * 0.6180339887) % 1;
+        const phase = [];
+        for (let i = 0; i < n; i++) phase.push((i / n + offset) % 1);
+        p = { phase, count: n, radius: 0, speed: 58, dir: null, edge: e };
         pools.set(e.id, p);
-        changed = true;
       }
-      /* 半径只在变化超过 0.05 时写,拖动滑条时不必每帧改属性 */
-      if (Math.abs(p.radius - radius) > 0.05) {
-        p.radius = radius;
-        p.els.forEach((c) => c.setAttribute('r', radius.toFixed(2)));
-      }
-      p.speed = speed;
-      /* 电流 ↔ 电子流向切换时只翻方向;相位要一起镜像,
-         否则粒子会瞬移到对面位置,看起来就是闪一下。 */
+      p.radius = radius;
+      p.speed = 58;
+      /* 切换电流/电子流向:相位镜像,位置连续 */
       if (p.dir != null && p.dir !== dir) {
-        for (let i = 0; i < p.count; i++) {
-          p.phase[i] = 1 - p.phase[i];
-          /* 端点淡出区里镜像后的相位会让透明度从 0 附近跳回 1,
-             直接补成"镜像前对应位置的透明度",切换瞬间不闪 */
-          const t = dir > 0 ? p.phase[i] : 1 - p.phase[i];
-          p.els[i].setAttribute('opacity', Math.min(1, Math.min(t, 1 - t) / 0.2).toFixed(3))
-        }
+        for (let i = 0; i < p.count; i++) p.phase[i] = 1 - p.phase[i];
       }
-      if (p.dir !== dir) changed = true;
       p.dir = dir;
       p.edge = e;
     });
+    pools.forEach((p, id) => { if (!seen.has(id)) pools.delete(id); });
 
-    pools.forEach((p, id) => {
-      if (!seen.has(id)) {
-        p.els.forEach((c) => c.remove());
-        pools.delete(id);
-        changed = true;
-      }
-    });
-
-    if (changed) placeParticlesAll();
+    sizeParticleCanvas();
     ensureRaf();
   }
 
-  function placeParticlesAll() {
-    pools.forEach((p) => placeParticles(p));
+  /* 端点淡入淡出:余弦,两端导数为 0。
+     宽度取 1/粒子数(0.25):相邻粒子在端点交接时亮度互补,
+     一条边的总亮度基本恒定,不会随粒子绕行规律闪烁。 */
+  const FADE_W = 0.25;
+  function edgeFadeAt(t) {
+    const d = Math.min(t, 1 - t);
+    if (d >= FADE_W) return 1;
+    return 0.5 - 0.5 * Math.cos(Math.PI * (d / FADE_W));
   }
 
-  function placeParticles(p) {
-    const e = p.edge;
-    if (!e) return;
-    const ax = w2(e.a[0]), ay = w2(e.a[1]), bx = w2(e.b[0]), by = w2(e.b[1]);
-    for (let i = 0; i < p.count; i++) {
-      const t = p.dir > 0 ? p.phase[i] : 1 - p.phase[i];
-      p.els[i].setAttribute('cx', lerp(ax, bx, t));
-      p.els[i].setAttribute('cy', lerp(ay, by, t));
-      const edgeFade = Math.min(1, Math.min(t, 1 - t) / 0.2);
-      p.els[i].setAttribute('opacity', edgeFade.toFixed(3));
-    }
+  function drawParticles() {
+    const c = R.pcanvas, ctx = R.pctx;
+    if (!c || !ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    if (c.hidden || !pools.size) return;
+    const spr = particleSprites()[R.opts.electrons ? 'electron' : 'current'];
+    const r = R.prect;
+    const view = R.view;
+    if (!r || !view || r.width < 2) return;
+    const dpr = R.pdpr || 1;
+    const ramp = energizeRamp(performance.now());
+    const scale = r.width / view.w;   /* 世界单位 → 屏幕像素 */
+
+    pools.forEach((p) => {
+      const e = p.edge;
+      if (!e) return;
+      const ax = e.a[0] * G, ay = e.a[1] * G, bx = e.b[0] * G, by = e.b[1] * G;
+      const px = p.radius * 2.2 * ramp;   /* sprite 直径的屏幕像素 */
+      const half = px / 2;
+      for (let i = 0; i < p.count; i++) {
+        const t = p.dir > 0 ? p.phase[i] : 1 - p.phase[i];
+        const wx = ax + (bx - ax) * t;
+        const wy = ay + (by - ay) * t;
+        const sx = (wx - view.x) * scale * dpr;
+        const sy = (wy - view.y) * scale * dpr;
+        if (sx < -px || sy < -px || sx > c.width + px || sy > c.height + px) continue;
+        ctx.globalAlpha = edgeFadeAt(t) * ramp;
+        ctx.drawImage(spr, sx - half * dpr, sy - half * dpr, px * dpr, px * dpr);
+      }
+    });
+    ctx.globalAlpha = 1;
   }
 
   function tick(now) {
@@ -744,26 +851,15 @@ function makeRenderer(svg) {
     const ramp = energizeRamp(now);
 
     pools.forEach((p) => {
-      const e = p.edge;
-      if (!e) return;
-      const ax = w2(e.a[0]), ay = w2(e.a[1]), bx = w2(e.b[0]), by = w2(e.b[1]);
       const advance = p.speed * ramp * dt / G;
       for (let i = 0; i < p.count; i++) {
-        /* 相位沿电流方向推进,越过端点后从另一端重新进入。
-           用带符号的模运算,避免反向时 phase 在 0/1 之间来回跳
-           (那会让粒子在两端闪烁)。 */
         p.phase[i] += advance;
         if (p.phase[i] >= 1) p.phase[i] -= 1;
         else if (p.phase[i] < 0) p.phase[i] += 1;
-        const t = p.dir > 0 ? p.phase[i] : 1 - p.phase[i];
-        p.els[i].setAttribute('cx', lerp(ax, bx, t));
-        p.els[i].setAttribute('cy', lerp(ay, by, t));
-        /* 端点处淡出淡入,避免粒子瞬移造成闪烁。
-           淡出区从 0.12 拉长到 0.2,每帧透明度变化更小。 */
-        const edgeFade = Math.min(1, Math.min(t, 1 - t) / 0.2);
-        p.els[i].setAttribute('opacity', edgeFade.toFixed(3));
       }
     });
+
+    drawParticles();
 
     /* 灯泡亮度向目标平滑逼近(开关闭合渐亮、断路渐灭、滑片连续调光) */
     lampAnims.forEach((a) => {
@@ -896,13 +992,14 @@ function makeRenderer(svg) {
   /* ---------- 生命周期 ---------- */
 
   ensureLayers();
+  ensureParticleCanvas();
   buildDefs();
   buildGrid();      /* 必须在 buildDefs 之后:pattern 定义在 defs 里 */
   applyView();
 
   let ro = null;
   if (typeof ResizeObserver !== 'undefined') {
-    ro = new ResizeObserver(() => applyView());
+    ro = new ResizeObserver(() => { applyView(); sizeParticleCanvas(); });
     ro.observe(svg);
   } else {
     window.addEventListener('resize', applyView);
@@ -910,11 +1007,14 @@ function makeRenderer(svg) {
 
   function destroy() {
     R.destroyed = true;
+    if (R.pcanvas && R.pctx) R.pctx.clearRect(0, 0, R.pcanvas.width, R.pcanvas.height);
+    if (R.pcanvas && R.pcanvas.parentElement) R.pcanvas.remove();
+    if (R.ovSvg && R.ovSvg.parentElement) R.ovSvg.remove();
     if (R.bellAudio) R.bellAudio.dispose();
     if (R.raf) cancelAnimationFrame(R.raf);
     document.removeEventListener('visibilitychange', onVisibility);
     if (ro) ro.disconnect();
-    else window.removeEventListener('resize', applyView);
+    else window.removeEventListener('resize', sizeParticleCanvas);
     R.edgeEls.forEach((rec) => {
       if (rec.hooks.rotor && rec.hooks.rotor.__spinRaf) cancelAnimationFrame(rec.hooks.rotor.__spinRaf);
       if (rec.hooks.lever && rec.hooks.lever.__raf) cancelAnimationFrame(rec.hooks.lever.__raf);
@@ -928,6 +1028,7 @@ function makeRenderer(svg) {
   const api = {
     /* 场景根(供交互层放 ghost) */
     overlay: () => R.layers.overlay,
+    bindParticleCanvas,
     view: () => R.view,
     opts: () => R.opts,
 
@@ -979,6 +1080,7 @@ export const render = {
   },
   get current() { return active; },
   overlay() { return active && active.overlay(); },
+  bindParticleCanvas(el) { if (active) active.bindParticleCanvas(el); },
   view() { return active ? active.view() : { x: 0, y: 0, w: 920, h: 640 }; },
   opts() { return active ? active.opts() : {}; },
   setModel(m) { if (active) active.setModel(m); },

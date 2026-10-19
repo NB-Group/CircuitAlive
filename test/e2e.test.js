@@ -185,17 +185,19 @@ async function main() {
       await fresh.waitForTimeout(500)
 
       const dim = await fresh.evaluate(() => {
-        const edges = document.querySelector('[data-layer="edges"]')
+        /* 模糊落在 HTML 容器 .ff-scene-wrap 上(iOS 不支持对 SVG <g> 用 filter) */
+        const wrap = document.querySelector('.ff-scene-wrap')
         const strip = document.querySelector('.problem-strip')
         const clone = document.querySelector('.overlay-clone.edge-group')
         return {
-          edges: getComputedStyle(edges).filter,
+          wrap: wrap ? getComputedStyle(wrap).filter : 'missing',
+          edges: getComputedStyle(document.querySelector('[data-layer="edges"]')).filter,
           strip: strip ? getComputedStyle(strip).filter : 'none',
           clone: document.querySelectorAll('.overlay-clone.edge-group').length,
-          cloneInScene: !!(clone && clone.closest('g.ff-scene'))
+          cloneInScene: !!(clone && clone.closest('.ff-scene-wrap'))
         }
       })
-      if (!/blur/.test(dim.edges)) throw new Error('画布没有被模糊: ' + dim.edges)
+      if (!/blur/.test(dim.wrap)) throw new Error('画布容器没有被模糊: ' + dim.wrap)
       /* 题目条/元件栏不该被糊:用户还得读题 */
       if (/blur/.test(dim.strip)) throw new Error('题目条被误模糊了: ' + dim.strip)
       if (!dim.clone) throw new Error('被检元件没有克隆到 overlay 层')
