@@ -40,7 +40,11 @@ function findChrome() {
       }
     }
   }
-  return ['/usr/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/chromium-browser'].find((p) => existsSync(p))
+  return [
+    '/usr/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/chromium-browser',
+    '/opt/google/chrome/chrome',   /* Chrome 官方包(本机) */
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  ].find((p) => existsSync(p))
 }
 
 /* 教程默认标记为已看:它盖在画布上(卡片本身可点),会让其他用例的
