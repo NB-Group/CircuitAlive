@@ -20,6 +20,8 @@ import { getProblem } from '../data/problems.js'
 import MathText from '../components/MathText.vue'
 import MeterDial from '../components/MeterDial.vue'
 import RheostatPopover from '../components/RheostatPopover.vue'
+import TutorialOverlay from '../components/TutorialOverlay.vue'
+import { useOnboarding } from '../composables/useOnboarding.js'
 
 const props = defineProps({ theme: String, id: String })
 const emit = defineEmits(['toggle-theme'])
@@ -57,6 +59,60 @@ function onWiperOpen(p) {
   rheoPop.value = p
 }
 function closeInspector() { inspectedKey.value = null; selectedKey.value = null }
+
+/* ---------- 新手教程 ----------
+   第一次进编辑器自动播放;顶栏「教程」按钮可以随时重看。 */
+const tour = useOnboarding()
+const tourOpen = ref(false)
+const tourSteps = [
+  {
+    target: '.palette',
+    title: '先挑一个元件',
+    text: '左边是元件栏:电池、开关、电阻、灯泡、滑变、电表……<br>选一个,再点画布上的一条格边,它就放上去了。'
+  },
+  {
+    target: ['.ff-scene-wrap'],
+    title: '电路画在方格纸上',
+    text: '元件吸附在网格线上,共点即相连。<br>空格拖拽平移、滚轮缩放,按 F 一键适配视图。'
+  },
+  {
+    target: '.layers .ff-btn:nth-child(1)',
+    title: '看电流怎么流',
+    text: '「电流」显示正电荷的流动方向,「电子流向」反向。<br>粒子速度跟电流大小走:电流越大,跑得越快。'
+  },
+  {
+    target: '.layers .ff-btn:nth-child(3)',
+    title: '看电势怎么降',
+    text: '「电势」用颜色标出每个点的电势高低,「电势数值」直接写出 φ。<br>导线是等势体,所以整段同色 —— 这正是 U=0 的意思。'
+  },
+  {
+    target: ['.edge-group[data-edge-key="4,0|5,0"]', '.edge-group'],
+    title: '长按元件打开检查器',
+    text: '单击只是选中;<b>长按</b>任意元件(或导线)会把它抬起、<br>其余画面虚化,旁边浮出检查器:参数、U、I、R、P 和定义式都在里面。'
+  },
+  {
+    target: ['.edge-group[data-edge-key="4,3|5,3"]', '.pal-btn[title="滑变"]'],
+    title: '滑变单击就能调',
+    text: '滑动变阻器还有单独的轻点弹条:直接拖滑片,<br>旁边实时显示接入阻值和支路电流,能看到整个电路跟着变。'
+  },
+  {
+    target: '.prob-head',
+    title: '题目页还能对答案',
+    text: '从题库打开的电路会带上原题和来源。<br>点「查看解析」展开答案,读完再自己动手调参数验证。'
+  },
+  {
+    target: '.topbar .save-btn',
+    title: '存进作品库',
+    text: '「保存」把电路存进本机作品库,随时可以回来继续改。<br>也可以从作品库分享链接给别人。'
+  }
+]
+function startTour() {
+  tourOpen.value = true
+}
+function endTour() {
+  tourOpen.value = false
+  tour.markSeen()
+}
 const problem = ref(null)
 const showAnswer = ref(false)
 /* 题目的图分两类:
@@ -213,6 +269,11 @@ onMounted(() => {
   canUndo.value = model.value.canUndo()
   canRedo.value = model.value.canRedo()
   bus.on('changed', onChanged)
+
+  /* 第一次进编辑器:等布局稳定后再起教程 */
+  if (!tour.seen()) {
+    setTimeout(() => { if (!tour.seen()) startTour() }, 700)
+  }
 })
 
 /* 题库题目:载入题干与第一张电路图。
@@ -328,7 +389,8 @@ const stateText = computed(() => {
       <button class="ff-btn ghost" :disabled="!canUndo" :title="'撤销 (Ctrl+Z)'" :aria-label="'撤销'" @click="doUndo">撤销</button>
       <button class="ff-btn ghost" :disabled="!canRedo" :title="'重做 (Ctrl+Shift+Z)'" :aria-label="'重做'" @click="doRedo">重做</button>
       <router-link to="/library" class="ff-btn ghost">作品库</router-link>
-      <button class="ff-btn" @click="openSave">保存</button>
+      <button class="ff-btn ghost" @click="startTour" title="新手教程">教程</button>
+      <button class="ff-btn save-btn" @click="openSave">保存</button>
       <button class="ff-btn ghost" @click="emit('toggle-theme')">{{ theme === 'dark' ? '浅色' : '深色' }}</button>
     </header>
 
@@ -424,6 +486,8 @@ const stateText = computed(() => {
         @changed="resolve"
       />
     </main>
+
+    <TutorialOverlay v-if="tourOpen" :steps="tourSteps" @done="endTour" />
 
     <SaveDialog
       v-if="showSave"

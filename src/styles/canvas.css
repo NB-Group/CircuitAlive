@@ -63,9 +63,26 @@
   transition: filter 200ms var(--ease-out), opacity 200ms var(--ease-out);
 }
 .ff-canvas.inspecting .ff-scene-wrap {
+  /* -webkit- 前缀给老版本 iOS;filter 必须落在 HTML 容器上,
+     iOS Safari 对 SVG <g> 的 CSS filter 支持不可靠 */
+  -webkit-filter: blur(3px);
   filter: blur(3px);
-  opacity: 0.5;
+  opacity: 0.62;
+  will-change: filter;
 }
+
+/* 纸色薄纱:即使某些 iOS 版本上 filter 失效,场景也会明显变暗,
+   分层效果仍然成立。盖在粒子 canvas 之上、overlay 之下。 */
+.ff-canvas .ff-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: var(--paper);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms var(--ease-out);
+}
+.ff-canvas.inspecting .ff-veil { opacity: 0.3; }
 
 /* 粒子 canvas:覆盖在场景上,不接收指针 */
 .ff-canvas canvas.ff-particles {
@@ -82,7 +99,7 @@
 svg.ff-overlay-stage {
   position: absolute;
   inset: 0;
-  z-index: 3;
+  z-index: 4;
   width: 100%;
   height: 100%;
   pointer-events: none;

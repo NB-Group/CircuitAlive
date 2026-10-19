@@ -164,6 +164,17 @@ function makeRenderer(svg) {
     }
     R.wrap = wrap;
 
+    /* 纸色薄纱:iOS 上 CSS filter 偶发失效时,至少场景仍然明显变暗,
+       "只有被选中的元件是亮的"这个分层效果不会丢。 */
+    let veil = host.querySelector(':scope > .ff-veil');
+    if (!veil) {
+      veil = document.createElement('div');
+      veil.className = 'ff-veil';
+      veil.setAttribute('aria-hidden', 'true');
+      host.appendChild(veil);
+    }
+    R.veil = veil;
+
     let ovSvg = host.querySelector(':scope > svg.ff-overlay-stage');
     if (!ovSvg) {
       ovSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -1010,6 +1021,7 @@ function makeRenderer(svg) {
     if (R.pcanvas && R.pctx) R.pctx.clearRect(0, 0, R.pcanvas.width, R.pcanvas.height);
     if (R.pcanvas && R.pcanvas.parentElement) R.pcanvas.remove();
     if (R.ovSvg && R.ovSvg.parentElement) R.ovSvg.remove();
+    if (R.veil && R.veil.parentElement) R.veil.remove();
     if (R.bellAudio) R.bellAudio.dispose();
     if (R.raf) cancelAnimationFrame(R.raf);
     document.removeEventListener('visibilitychange', onVisibility);

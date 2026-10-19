@@ -43,6 +43,10 @@ function findChrome() {
   return ['/usr/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/chromium-browser'].find((p) => existsSync(p))
 }
 
+/* 教程默认标记为已看:它盖在画布上(卡片本身可点),会让其他用例的
+   点按落在卡片上。专门测教程的那一项自己清掉这个标记。 */
+const ONBOARD_DONE = () => { try { localStorage.setItem('ff.onboarding.v1', JSON.stringify({ done: true })) } catch (e) {} }
+
 let passed = 0, failed = 0
 const failures = []
 async function test(name, fn) {
@@ -94,6 +98,7 @@ async function main() {
     /* ============ 桌面 ============ */
     console.log('\n桌面')
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } })
+    await ctx.addInitScript(ONBOARD_DONE)
     const page = await ctx.newPage()
     const errors = []
     page.on('pageerror', (e) => errors.push(String(e)))
@@ -250,6 +255,42 @@ async function main() {
         return [...new Set(vals)]
       })
       if (radii.length > 1) throw new Error('按钮圆角不一致: ' + radii.join(','))
+    })
+
+    await test('新手教程自动出现、可逐步走完、记住已看', async () => {
+      const tourCtx = await browser.newContext({ viewport: { width: 1280, height: 860 } })
+      const fresh = await tourCtx.newPage()
+      await fresh.goto(base + '#/problem/r-2013-22', { waitUntil: 'networkidle' })
+      await fresh.waitForSelector('.edge-group')
+      await fresh.waitForSelector('.ff-tour', { timeout: 5000 })
+      const total = 8
+      for (let i = 1; i <= total; i++) {
+        const kick = await fresh.locator('.ff-tour-kicker').textContent()
+        if (!kick.includes(`${i} / ${total}`)) throw new Error('步骤序号不对: ' + kick)
+        const box = await fresh.locator('.ff-tour-card').boundingBox()
+        const vw = await fresh.evaluate(() => innerWidth)
+        const vh = await fresh.evaluate(() => innerHeight)
+        if (!box || box.x < 0 || box.y < 0 || box.x + box.width > vw + 1 || box.y + box.height > vh + 1) {
+          throw new Error(`第 ${i} 步卡片跑出视口: ${JSON.stringify(box)}`)
+        }
+        if (i < total) {
+          await fresh.locator('.ff-tour-card .ff-btn.primary').click()
+          await fresh.waitForTimeout(260)
+        }
+      }
+      await fresh.locator('.ff-tour-card .ff-btn.primary').click()
+      await fresh.waitForTimeout(300)
+      if (await fresh.locator('.ff-tour').count()) throw new Error('走完后教程没有关闭')
+
+      await fresh.reload({ waitUntil: 'networkidle' })
+      await fresh.waitForSelector('.edge-group')
+      await fresh.waitForTimeout(1400)
+      if (await fresh.locator('.ff-tour').count()) throw new Error('已看过的教程又重新弹出来了')
+
+      await fresh.locator('.topbar').getByText('教程').click()
+      await fresh.waitForTimeout(400)
+      if (!(await fresh.locator('.ff-tour').count())) throw new Error('「教程」按钮没能重新打开')
+      await tourCtx.close()
     })
 
     await test('撤销/重做按钮随操作启用并生效', async () => {
@@ -459,6 +500,7 @@ async function main() {
       viewport: { width: 390, height: 844 },
       hasTouch: true, isMobile: true, deviceScaleFactor: 2
     })
+    await tctx.addInitScript(ONBOARD_DONE)
     const tp = await tctx.newPage()
     const tErrors = []
     tp.on('pageerror', (e) => tErrors.push(String(e)))
