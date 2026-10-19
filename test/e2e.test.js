@@ -257,6 +257,34 @@ async function main() {
       if (radii.length > 1) throw new Error('按钮圆角不一致: ' + radii.join(','))
     })
 
+    await test('教程每一步卡片都可见(空白画布/平板也不许隐形)', async () => {
+      for (const vp of [{ width: 1280, height: 860 }, { width: 820, height: 1180 }, { width: 390, height: 844 }]) {
+        const c = await browser.newContext({ viewport: vp, hasTouch: vp.width < 900, isMobile: vp.width < 900 })
+        const f = await c.newPage()
+        /* 空白画布:没有元件、没有题目条,最容易漏目标 */
+        await f.goto(base + '#/edit', { waitUntil: 'networkidle' })
+        await f.waitForSelector('.ff-tour', { timeout: 6000 })
+        for (let i = 1; i <= 8; i++) {
+          await f.waitForTimeout(220)
+          const st = await f.evaluate(() => {
+            const card = document.querySelector('.ff-tour-card')
+            const kick = document.querySelector('.ff-tour-kicker')
+            return {
+              kick: kick ? kick.textContent : '',
+              op: card ? parseFloat(getComputedStyle(card).opacity) : -1,
+              hole: !!document.querySelector('.ff-tour-hole')
+            }
+          })
+          if (st.op < 0.99) throw new Error(`${vp.width}px 第 ${i} 步卡片不可见 (opacity ${st.op})`)
+          if (st.hole === false) throw new Error(`${vp.width}px 第 ${i} 步没有高亮目标,整屏只有暗幕`)
+          if (i < 8) {
+            await f.locator('.ff-tour-card .ff-btn.primary').click()
+          }
+        }
+        await c.close()
+      }
+    })
+
     await test('新手教程自动出现、可逐步走完、记住已看', async () => {
       const tourCtx = await browser.newContext({ viewport: { width: 1280, height: 860 } })
       const fresh = await tourCtx.newPage()

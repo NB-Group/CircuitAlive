@@ -46,7 +46,15 @@ function measure() {
   const s = step.value
   if (!s) return
   const el = pickTarget(s)
-  if (!el) { rect.value = null; return }
+  /* 目标不在(空白画布没有元件、窄屏藏起了图层条……)时:
+     不镂空,但仍然显示卡片。以前这里直接 return,ready 停留在 false,
+     卡片 opacity 永远是 0 —— 用户看到的就是"屏幕暗了、没有下一步"。 */
+  if (!el) {
+    rect.value = null
+    ready.value = true
+    positionCard()
+    return
+  }
   const r = el.getBoundingClientRect()
   const pad = s.pad == null ? 6 : s.pad
   rect.value = {
@@ -59,16 +67,30 @@ function measure() {
   positionCard()
 }
 
+/* 可见视口。iOS/移动端模拟下 window.innerHeight 可能比真正能看到的
+   区域高(布局视口),用 visualViewport 才不会把卡片放到屏幕外。 */
+function viewport() {
+  const vv = typeof window !== 'undefined' ? window.visualViewport : null
+  if (vv && vv.width > 0 && vv.height > 0) {
+    return { x: vv.offsetLeft, y: vv.offsetTop, w: vv.width, h: vv.height }
+  }
+  return { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }
+}
+
 function positionCard() {
   const r = rect.value
   const cw = cardEl.value ? cardEl.value.offsetWidth : 330
   const ch = cardEl.value ? cardEl.value.offsetHeight : 190
   const gap = 14
-  const vw = window.innerWidth, vh = window.innerHeight
-  const clampX = (x) => Math.max(12, Math.min(x, vw - cw - 12))
+  const vp = viewport()
+  const vw = vp.w + vp.x, vh = vp.h + vp.y
+  const clampX = (x) => Math.max(vp.x + 12, Math.min(x, vw - cw - 12))
 
   if (!r) {
-    cardPos.value = { left: Math.max(12, (vw - cw) / 2), top: Math.max(12, vh / 2 - ch / 2) }
+    cardPos.value = {
+      left: Math.max(vp.x + 12, (vw - cw) / 2),
+      top: Math.max(vp.y + 12, vh / 2 - ch / 2)
+    }
     return
   }
 
@@ -82,18 +104,19 @@ function positionCard() {
     { left: r.left + r.width + gap, top: r.top + r.height / 2 - ch / 2 },
     { left: r.left - gap - cw, top: r.top + r.height / 2 - ch / 2 }
   ]
-  const fits = (c) => c.left >= 8 && c.left + cw <= vw - 8 && c.top >= 8 && c.top + ch <= vh - 8
+  const fits = (c) => c.left >= vp.x + 8 && c.left + cw <= vw - 8 &&
+                       c.top >= vp.y + 8 && c.top + ch <= vh - 8
   let pick = cands.find(fits)
   if (!pick) {
     /* 都放不下:取"溢出最少"的那个,再硬夹进视口 */
     const overflow = (c) =>
-      Math.max(0, 8 - c.top) + Math.max(0, c.top + ch - (vh - 8)) +
-      Math.max(0, 8 - c.left) + Math.max(0, c.left + cw - (vw - 8))
+      Math.max(0, vp.y + 8 - c.top) + Math.max(0, c.top + ch - (vh - 8)) +
+      Math.max(0, vp.x + 8 - c.left) + Math.max(0, c.left + cw - (vw - 8))
     pick = cands.slice().sort((a, b) => overflow(a) - overflow(b))[0]
   }
   cardPos.value = {
     left: clampX(pick.left),
-    top: Math.max(8, Math.min(pick.top, vh - ch - 8))
+    top: Math.max(vp.y + 8, Math.min(pick.top, vh - ch - 8))
   }
 }
 
@@ -151,6 +174,10 @@ onMounted(() => {
   startPoll()
   window.addEventListener('resize', onResize)
   window.addEventListener('scroll', onResize, true)
+  if (typeof window !== 'undefined' && window.visualViewport) {
+    window.visualViewport.addEventListener('resize', onResize)
+    window.visualViewport.addEventListener('scroll', onResize)
+  }
 })
 
 onBeforeUnmount(() => {
@@ -158,6 +185,10 @@ onBeforeUnmount(() => {
   if (raf) cancelAnimationFrame(raf)
   window.removeEventListener('resize', onResize)
   window.removeEventListener('scroll', onResize, true)
+  if (typeof window !== 'undefined' && window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', onResize)
+    window.visualViewport.removeEventListener('scroll', onResize)
+  }
 })
 </script>
 

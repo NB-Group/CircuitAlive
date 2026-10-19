@@ -76,27 +76,27 @@ const tourSteps = [
     text: '元件吸附在网格线上,共点即相连。<br>空格拖拽平移、滚轮缩放,按 F 一键适配视图。'
   },
   {
-    target: '.layers .ff-btn:nth-child(1)',
+    target: ['.layers .ff-btn:nth-child(1)', '.layers', '.topbar'],
     title: '看电流怎么流',
     text: '「电流」显示正电荷的流动方向,「电子流向」反向。<br>粒子速度跟电流大小走:电流越大,跑得越快。'
   },
   {
-    target: '.layers .ff-btn:nth-child(3)',
+    target: ['.layers .ff-btn:nth-child(3)', '.layers', '.topbar'],
     title: '看电势怎么降',
     text: '「电势」用颜色标出每个点的电势高低,「电势数值」直接写出 φ。<br>导线是等势体,所以整段同色 —— 这正是 U=0 的意思。'
   },
   {
-    target: ['.edge-group[data-edge-key="4,0|5,0"]', '.edge-group'],
+    target: ['.edge-group[data-edge-key="4,0|5,0"]', '.edge-group', '.ff-scene-wrap'],
     title: '长按元件打开检查器',
     text: '单击只是选中;<b>长按</b>任意元件(或导线)会把它抬起、<br>其余画面虚化,旁边浮出检查器:参数、U、I、R、P 和定义式都在里面。'
   },
   {
-    target: ['.edge-group[data-edge-key="4,3|5,3"]', '.pal-btn[title="滑变"]'],
+    target: ['.edge-group[data-edge-key="4,3|5,3"]', '.pal-btn[title="滑变"]', '.palette'],
     title: '滑变单击就能调',
     text: '滑动变阻器还有单独的轻点弹条:直接拖滑片,<br>旁边实时显示接入阻值和支路电流,能看到整个电路跟着变。'
   },
   {
-    target: '.prob-head',
+    target: ['.prob-head', '.body', '.topbar'],
     title: '题目页还能对答案',
     text: '从题库打开的电路会带上原题和来源。<br>点「查看解析」展开答案,读完再自己动手调参数验证。'
   },
@@ -626,11 +626,7 @@ const stateText = computed(() => {
 .ff-editor-tip-leave-active { transition: opacity var(--dur-fast) ease, transform var(--dur-fast) ease; }
 .ff-editor-tip-enter-from, .ff-editor-tip-leave-to { opacity: 0; transform: translateX(-50%) translateY(8px); }
 
-@media (max-width: 900px) {
-  .layers { display: none; }
-}
-/* 手机上这些开关是"电路活了"的核心,不能藏;让图层条自己横向滚 */
-@media (max-width: 720px) {
-  .layers { display: flex; }
-}
+/* 图层开关是"电路活了"的核心,任何宽度都不藏:
+   顶栏放不下时由 <=720px 的换行规则接管 */
+
 </style>
