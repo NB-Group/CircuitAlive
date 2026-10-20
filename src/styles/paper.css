@@ -54,7 +54,20 @@
   border-color: var(--vermilion);
   color: #fff8ef;
 }
-.ff-btn.primary:hover:not(:disabled) { filter: brightness(1.07); }
+/* 悬停必须保留红底白字。.ff-btn:hover 的浅色背景规则比这里更"靠后"
+   命中不了,但 .ff-btn:hover 的 background 会覆盖 primary 的底色
+   (同为单类选择器,后者在文件里更早),所以这里必须显式重申。 */
+.ff-btn.primary:hover:not(:disabled) {
+  background: var(--vermilion);
+  border-color: var(--vermilion);
+  color: #fff8ef;
+  filter: brightness(1.07);
+}
+.ff-btn.primary:active:not(:disabled) {
+  background: var(--vermilion);
+  border-color: var(--vermilion);
+  color: #fff8ef;
+}
 
 .ff-btn.ghost { background: transparent; border-color: transparent; }
 .ff-btn.ghost:hover:not(:disabled) { background: var(--vermilion-soft); border-color: transparent; }

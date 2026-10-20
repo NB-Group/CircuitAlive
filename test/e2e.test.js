@@ -325,6 +325,27 @@ async function main() {
       await tourCtx.close()
     })
 
+    await test('红色主按钮悬停后仍是红底白字', async () => {
+      const fresh = await ctx.newPage()
+      await fresh.goto(base, { waitUntil: 'networkidle' })
+      const btn = fresh.locator('.hero-actions .ff-btn.primary')
+      const read = () => btn.evaluate((e) => {
+        const c = getComputedStyle(e)
+        return { bg: c.backgroundColor, color: c.color }
+      })
+      const normal = await read()
+      await btn.hover()
+      await fresh.waitForTimeout(220)
+      const hover = await read()
+      for (const [name, st] of [['普通', normal], ['悬停', hover]]) {
+        if (st.bg === st.color) throw new Error(`${name}态文字与背景同色: ${JSON.stringify(st)}`)
+        /* 主按钮必须是朱红底 + 浅色字 */
+        if (!/rgb\(200, 69, 31\)/.test(st.bg)) throw new Error(`${name}态底色不是朱红: ${st.bg}`)
+        if (!/rgb\(255, 248, 239\)/.test(st.color)) throw new Error(`${name}态字色不是纸白: ${st.color}`)
+      }
+      await fresh.close()
+    })
+
     await test('撤销/重做按钮随操作启用并生效', async () => {
       /* 用全新页面:同一个 page 从题目页切到 #/edit 时组件复用,
          model 里还留着上一题的电路,撤销栈非空,初始态就不干净了 */
