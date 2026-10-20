@@ -99,20 +99,51 @@ BUILDERS[T.LAMP] = function (g) {
   f2.setAttribute('data-part', 'filament');
 };
 
-/* 滑动变阻器:矩形 + 上方箭头线 + 滑片竖线(位置随 wiper) */
+/* 滑动变阻器(课本标准画法):
+ *   长方形电阻体;左端一段接入线;右端引出线向右、直角向上、
+ *   再直角向左绕过顶部,末端向下折成滑片箭头,箭头尖戳在
+ *   长方形的上长边上。滑片位置由 wiper(0=左,1=右)决定。
+ *
+ * 整个符号必须留在 ±HALF(20) 的格子里,否则会和相邻导线重叠。
+ * 局部坐标:x 沿元件方向,y 负方向为"上方"。 */
+const RH_L = -12;          /* 长方形左边 */
+const RH_R = 8;            /* 长方形右边 */
+const RH_HH = 5;           /* 半高 */
+const RH_RISE = 16;        /* 右端引出线折点 x */
+const RH_TOP = -12;        /* 顶部绕行高度 */
+const RH_WX0 = -10, RH_WX1 = 6;   /* 滑片尖可达范围(留边) */
+
 BUILDERS[T.RHEOSTAT] = function (g, angle, props) {
-  line(g, -HALF, 0, -13, 0);
-  line(g, 13, 0, HALF, 0);
-  el('rect', { x: -13, y: -5.5, width: 26, height: 11, class: 'fill-paper' }, g);
-  line(g, -13, -11, 10, -11, 'thin');         /* 箭杆 */
-  el('polygon', { points: '10,-13.5 15,-11 10,-8.5' }, g); /* 箭头 */
+  /* 接入线 */
+  line(g, -HALF, 0, RH_L, 0);
+  line(g, RH_R, 0, RH_RISE, 0);
+
+  /* 长方形电阻体 */
+  el('rect', {
+    x: RH_L, y: -RH_HH,
+    width: RH_R - RH_L, height: RH_HH * 2,
+    class: 'fill-paper'
+  }, g);
+
   const w = clamp(props && props.wiper == null ? 1 : props.wiper, 0, 1);
-  const wx = lerp(-13, 13, w);
-  const wiper = line(g, wx, -11.5, wx, -5.5);
-  wiper.setAttribute('data-hook', 'wiper');
-  wiper.setAttribute('stroke-width', '2.5');
-  const knob = el('circle', { cx: wx, cy: -11.5, r: 3.2, class: 'fill-paper' }, g);
-  knob.setAttribute('data-hook', 'wiper-knob');
+  const wx = lerp(RH_WX0, RH_WX1, w);
+
+  /* 右端引出线:向右 → 向上 → 向左绕过顶部 → 下折到滑片 */
+  el('path', {
+    d: 'M ' + RH_RISE + ' 0 L ' + RH_RISE + ' ' + RH_TOP +
+       ' L ' + wx + ' ' + RH_TOP + ' L ' + wx + ' ' + (-RH_HH - 4),
+    class: 'thin rheo-over',
+    fill: 'none'
+  }, g);
+
+  /* 滑片箭头:尖戳在上长边上 */
+  const tip = el('polygon', {
+    points: (wx - 3) + ',' + (-RH_HH - 6) + ' ' +
+            (wx + 3) + ',' + (-RH_HH - 6) + ' ' +
+            wx + ',' + (-RH_HH),
+    class: 'fill-ink'
+  }, g);
+  tip.setAttribute('data-hook', 'wiper');
 };
 
 /* 电流表 / 电压表:圆圈 + 字母;读数文字由 render 层放到符号下方 */
@@ -191,14 +222,21 @@ function setLever(hookEl, closed) {
   hookEl.__raf = requestAnimationFrame(frame);
 }
 
-/* 滑片位置(0..1):滑线与把手同步(hooks 为 {wiper, wiper-knob}) */
+/* 滑片位置(0..1):顶部绕行线的末端与箭头一起平移 */
 function setWiper(hooks, wiper) {
-  const bar = hooks && (hooks.wiper || hooks);
-  if (!bar || !bar.setAttribute) return;
-  const x = lerp(-13, 13, clamp(wiper == null ? 1 : wiper, 0, 1));
-  bar.setAttribute('x1', x);
-  bar.setAttribute('x2', x);
-  if (hooks['wiper-knob']) hooks['wiper-knob'].setAttribute('cx', x);
+  const tip = hooks && hooks.wiper;
+  if (!tip || !tip.setAttribute) return;
+  const x = lerp(RH_WX0, RH_WX1, clamp(wiper == null ? 1 : wiper, 0, 1));
+  tip.setAttribute('points',
+    (x - 3) + ',' + (-RH_HH - 6) + ' ' +
+    (x + 3) + ',' + (-RH_HH - 6) + ' ' +
+    x + ',' + (-RH_HH));
+  const path = tip.parentNode && tip.parentNode.querySelector('path.rheo-over');
+  if (path) {
+    path.setAttribute('d',
+      'M ' + RH_RISE + ' 0 L ' + RH_RISE + ' ' + RH_TOP +
+      ' L ' + x + ' ' + RH_TOP + ' L ' + x + ' ' + (-RH_HH - 4));
+  }
 }
 
 /* 灯泡光晕强度(0..1.2,可过曝):暖色泛光 + 白热核 + 纸面投影光。

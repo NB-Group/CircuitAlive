@@ -446,7 +446,7 @@ function makeRenderer(svg) {
     } else if (label) {
       /* 非仪表元件:标注画在符号外侧。滑变的滑片箭头朝上穿出,
          要再挪远一点,否则标签会压在箭头上。 */
-      const off = e.type === T.RHEOSTAT ? -21 : -15;
+      const off = e.type === T.RHEOSTAT ? -23 : -15;
       const [tx, ty] = localToWorld(e, 0, off);
       const t = svgEl('text', {
         x: tx.toFixed(2), y: ty.toFixed(2),
