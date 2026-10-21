@@ -99,14 +99,15 @@ BUILDERS[T.LAMP] = function (g) {
   f2.setAttribute('data-part', 'filament');
 };
 
-/* 滑动变阻器(标准画法,2026-10-21 用户确认):
- *   长方形电阻体居中,左右两个接线柱都落在长方形的水平对称轴上;
- *   右端接线柱引出后向上、再向左绕过顶部,末端是一根细竖杆,
- *   竖杆末端是开口 V 形箭头,箭头尖垂直戳在长方形的上长边上。
+/* 滑动变阻器(课本标准画法):
+ *   长方形电阻体居中;左接线柱从格边直接接到长方形的左端中点;
+ *   长方形右端悬空(课本里滑变的另一个固定接线柱不用)。
+ *   右接线柱从格边水平进来,在长方形右侧留出一段空隙后直角向上,
+ *   再向左绕过顶部,向下落成一根细竖杆,末端是开口 V 形箭头,
+ *   箭头尖垂直戳在长方形的上长边上。
  *
- *   课本原图里右接线柱是从右下方直接接出的;"向上绕到顶部"这一步
- *   是为了让两个接线柱都落在对称轴上、便于按格边渲染。用户认可
- *   这个折中,不要再加折角或留空隙。
+ *   要害:绕行导线的外端向外折到格边,不许再连回长方形右端 ——
+ *   连回去等于把滑片端和固定端短接(用户 2026-10-21 草图指出)。
  *
  * 整个符号必须留在 ±HALF(20) 的格子里,否则会和相邻导线重叠。
  * 局部坐标:x 沿元件方向,y 负方向为"上方"。 */
@@ -118,11 +119,10 @@ const RH_TOP = -13;        /* 顶部绕行高度 */
 const RH_WX0 = -7, RH_WX1 = 7;   /* 滑片尖可达范围 */
 
 BUILDERS[T.RHEOSTAT] = function (g, angle, props) {
-  /* 左右接线柱:都在 y=0(对称轴) */
+  /* 左接线柱:格边 → 长方形左端中点 */
   line(g, -HALF, 0, RH_L, 0);
-  line(g, RH_R, 0, RH_STUB, 0);
 
-  /* 长方形电阻体 */
+  /* 长方形电阻体(右端不接线) */
   el('rect', {
     x: RH_L, y: -RH_HH,
     width: RH_R - RH_L, height: RH_HH * 2,
@@ -132,10 +132,12 @@ BUILDERS[T.RHEOSTAT] = function (g, angle, props) {
   const w = clamp(props && props.wiper == null ? 1 : props.wiper, 0, 1);
   const wx = lerp(RH_WX0, RH_WX1, w);
 
-  /* 右接线柱:向右 → 向上 → 向左绕过顶部 → 细竖杆 */
+  /* 右接线柱:格边水平进来 → 在长方形右侧的空隙处直角向上 →
+   * 绕过顶部 → 细竖杆落到箭头上。
+   * 注意不要从长方形右端引线,否则滑片端和固定端就短接了。 */
   el('path', {
-    d: 'M ' + RH_STUB + ' 0 L ' + RH_STUB + ' ' + RH_TOP +
-       ' L ' + wx + ' ' + RH_TOP + ' L ' + wx + ' ' + (-RH_HH - 2),
+    d: 'M ' + HALF + ' 0 L ' + RH_STUB + ' 0 L ' + RH_STUB + ' ' + RH_TOP +
+       ' L ' + wx + ' ' + RH_TOP + ' L ' + wx + ' ' + (-RH_HH),
     class: 'thin rheo-over',
     fill: 'none'
   }, g);
@@ -242,8 +244,8 @@ function setWiper(hooks, wiper) {
   const path = tip.parentNode && tip.parentNode.querySelector('path.rheo-over');
   if (path) {
     path.setAttribute('d',
-      'M ' + RH_STUB + ' 0 L ' + RH_STUB + ' ' + RH_TOP +
-      ' L ' + x + ' ' + RH_TOP + ' L ' + x + ' ' + (-RH_HH - 2));
+      'M ' + HALF + ' 0 L ' + RH_STUB + ' 0 L ' + RH_STUB + ' ' + RH_TOP +
+      ' L ' + x + ' ' + RH_TOP + ' L ' + x + ' ' + (-RH_HH));
   }
 }
 
