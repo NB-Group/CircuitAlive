@@ -203,7 +203,7 @@ function rheostatLocal(e, world) {
 /* 滑片可抓取区:长方形上边以上、顶部绕行线以下,横向覆盖滑片可达范围 */
 function wiperGrab(e, world) {
   const loc = rheostatLocal(e, world)
-  return loc.ly <= -4 && loc.ly >= -16 && loc.lx >= -12 && loc.lx <= 8
+  return loc.ly <= -4 && loc.ly >= -16 && loc.lx >= -9 && loc.lx <= 9
 }
 
 function placeAtEdge(world) {
@@ -490,7 +490,7 @@ function onMove(ev) {
     if (!props.model.edges.get(I.drag.key)) { I.drag = null; return }
     const loc = rheostatLocal(I.drag.edge, world)
     I.drag.moved = true
-    I.drag.edge.props.wiper = clamp((loc.lx + 10) / 16, 0, 1)
+    I.drag.edge.props.wiper = clamp((loc.lx + 7) / 14, 0, 1)
     bus.emit('changed')
     return
   }

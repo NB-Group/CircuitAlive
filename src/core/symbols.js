@@ -100,23 +100,24 @@ BUILDERS[T.LAMP] = function (g) {
 };
 
 /* 滑动变阻器(课本标准画法):
- *   长方形电阻体;左端一段接入线;右端引出线向右、直角向上、
- *   再直角向左绕过顶部,末端向下折成滑片箭头,箭头尖戳在
- *   长方形的上长边上。滑片位置由 wiper(0=左,1=右)决定。
+ *   长方形电阻体居中放置,左右两个接线柱都落在长方形的水平对称轴上;
+ *   右端接线柱引出后向上、再向左绕过顶部,末端是一根细竖杆 + 箭头,
+ *   箭头尖垂直戳在长方形的上长边上。
+ *   "再弯一次"是为了让右接线柱也能回到对称轴,课本图里它从上方接入。
  *
  * 整个符号必须留在 ±HALF(20) 的格子里,否则会和相邻导线重叠。
  * 局部坐标:x 沿元件方向,y 负方向为"上方"。 */
-const RH_L = -12;          /* 长方形左边 */
-const RH_R = 8;            /* 长方形右边 */
+const RH_L = -9;           /* 长方形左边 */
+const RH_R = 9;            /* 长方形右边 */
 const RH_HH = 5;           /* 半高 */
-const RH_RISE = 16;        /* 右端引出线折点 x */
-const RH_TOP = -12;        /* 顶部绕行高度 */
-const RH_WX0 = -10, RH_WX1 = 6;   /* 滑片尖可达范围(留边) */
+const RH_STUB = 15;        /* 右接线柱折点 x(向上) */
+const RH_TOP = -13;        /* 顶部绕行高度 */
+const RH_WX0 = -7, RH_WX1 = 7;   /* 滑片尖可达范围 */
 
 BUILDERS[T.RHEOSTAT] = function (g, angle, props) {
-  /* 接入线 */
+  /* 左右接线柱:都在 y=0(对称轴) */
   line(g, -HALF, 0, RH_L, 0);
-  line(g, RH_R, 0, RH_RISE, 0);
+  line(g, RH_R, 0, RH_STUB, 0);
 
   /* 长方形电阻体 */
   el('rect', {
@@ -128,21 +129,25 @@ BUILDERS[T.RHEOSTAT] = function (g, angle, props) {
   const w = clamp(props && props.wiper == null ? 1 : props.wiper, 0, 1);
   const wx = lerp(RH_WX0, RH_WX1, w);
 
-  /* 右端引出线:向右 → 向上 → 向左绕过顶部 → 下折到滑片 */
+  /* 右接线柱:向右 → 向上 → 向左绕过顶部 → 细竖杆 */
   el('path', {
-    d: 'M ' + RH_RISE + ' 0 L ' + RH_RISE + ' ' + RH_TOP +
-       ' L ' + wx + ' ' + RH_TOP + ' L ' + wx + ' ' + (-RH_HH - 4),
+    d: 'M ' + RH_STUB + ' 0 L ' + RH_STUB + ' ' + RH_TOP +
+       ' L ' + wx + ' ' + RH_TOP + ' L ' + wx + ' ' + (-RH_HH - 2),
     class: 'thin rheo-over',
     fill: 'none'
   }, g);
 
-  /* 滑片箭头:尖戳在上长边上 */
-  const tip = el('polygon', {
-    points: (wx - 3) + ',' + (-RH_HH - 6) + ' ' +
-            (wx + 3) + ',' + (-RH_HH - 6) + ' ' +
-            wx + ',' + (-RH_HH),
-    class: 'fill-ink'
+  /* 箭头:细线 + 开口 V 形箭头(课本画法),尖戳在上长边上 */
+  const tip = el('path', {
+    d: 'M ' + (wx - 2.6) + ' ' + (-RH_HH - 4.6) +
+       ' L ' + wx + ' ' + (-RH_HH) +
+       ' L ' + (wx + 2.6) + ' ' + (-RH_HH - 4.6),
+    class: 'rheo-arrow',
+    fill: 'none'
   }, g);
+  tip.setAttribute('stroke-width', '1.6');
+  tip.setAttribute('stroke-linecap', 'round');
+  tip.setAttribute('stroke-linejoin', 'round');
   tip.setAttribute('data-hook', 'wiper');
 };
 
@@ -227,15 +232,15 @@ function setWiper(hooks, wiper) {
   const tip = hooks && hooks.wiper;
   if (!tip || !tip.setAttribute) return;
   const x = lerp(RH_WX0, RH_WX1, clamp(wiper == null ? 1 : wiper, 0, 1));
-  tip.setAttribute('points',
-    (x - 3) + ',' + (-RH_HH - 6) + ' ' +
-    (x + 3) + ',' + (-RH_HH - 6) + ' ' +
-    x + ',' + (-RH_HH));
+  tip.setAttribute('d',
+    'M ' + (x - 2.6) + ' ' + (-RH_HH - 4.6) +
+    ' L ' + x + ' ' + (-RH_HH) +
+    ' L ' + (x + 2.6) + ' ' + (-RH_HH - 4.6));
   const path = tip.parentNode && tip.parentNode.querySelector('path.rheo-over');
   if (path) {
     path.setAttribute('d',
-      'M ' + RH_RISE + ' 0 L ' + RH_RISE + ' ' + RH_TOP +
-      ' L ' + x + ' ' + RH_TOP + ' L ' + x + ' ' + (-RH_HH - 4));
+      'M ' + RH_STUB + ' 0 L ' + RH_STUB + ' ' + RH_TOP +
+      ' L ' + x + ' ' + RH_TOP + ' L ' + x + ' ' + (-RH_HH - 2));
   }
 }
 
