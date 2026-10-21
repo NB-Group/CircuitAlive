@@ -121,8 +121,8 @@ svg.ff-overlay-stage {
 .ff-canvas .sym .fill-paper { fill: var(--paper-raised); }
 .ff-canvas .sym .fill-ink { fill: var(--ink); stroke: none; }
 .ff-canvas .sym .thin { stroke-width: 1.4; }
-/* 滑变箭头是开口 V 形细线,不要继承 .sym 的 2px 描边 */
-.ff-canvas .sym .rheo-arrow { stroke: var(--ink); stroke-width: 1.6; fill: none; }
+/* 滑变箭头与绕行导线同宽:都是真实导线/墨线,不吃 .sym 的细线变体 */
+.ff-canvas .sym .rheo-arrow { stroke: var(--ink); stroke-width: 2; fill: none; }
 .ff-canvas .sym .thick { stroke-width: 3.5; }
 
 /* 未旋转文字层:字母永远正立,锚点在中点 */

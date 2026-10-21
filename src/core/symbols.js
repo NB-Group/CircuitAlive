@@ -134,15 +134,16 @@ BUILDERS[T.RHEOSTAT] = function (g, angle, props) {
 
   /* 右接线柱:格边水平进来 → 在长方形右侧的空隙处直角向上 →
    * 绕过顶部 → 细竖杆落到箭头上。
-   * 注意不要从长方形右端引线,否则滑片端和固定端就短接了。 */
+   * 注意不要从长方形右端引线,否则滑片端和固定端就短接了。
+   * 它是真实导线,用和其他导线一样的描边宽度(不要 .thin)。 */
   el('path', {
     d: 'M ' + HALF + ' 0 L ' + RH_STUB + ' 0 L ' + RH_STUB + ' ' + RH_TOP +
        ' L ' + wx + ' ' + RH_TOP + ' L ' + wx + ' ' + (-RH_HH),
-    class: 'thin rheo-over',
+    class: 'rheo-over',
     fill: 'none'
   }, g);
 
-  /* 箭头:细线 + 开口 V 形箭头(课本画法),尖戳在上长边上 */
+  /* 箭头:开口 V 形,与导线同宽,尖戳在上长边上 */
   const tip = el('path', {
     d: 'M ' + (wx - 2.6) + ' ' + (-RH_HH - 4.6) +
        ' L ' + wx + ' ' + (-RH_HH) +
@@ -150,7 +151,7 @@ BUILDERS[T.RHEOSTAT] = function (g, angle, props) {
     class: 'rheo-arrow',
     fill: 'none'
   }, g);
-  tip.setAttribute('stroke-width', '1.6');
+  tip.setAttribute('stroke-width', '2');
   tip.setAttribute('stroke-linecap', 'round');
   tip.setAttribute('stroke-linejoin', 'round');
   tip.setAttribute('data-hook', 'wiper');
