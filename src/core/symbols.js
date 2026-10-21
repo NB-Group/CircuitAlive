@@ -99,11 +99,14 @@ BUILDERS[T.LAMP] = function (g) {
   f2.setAttribute('data-part', 'filament');
 };
 
-/* 滑动变阻器(课本标准画法):
- *   长方形电阻体居中放置,左右两个接线柱都落在长方形的水平对称轴上;
- *   右端接线柱引出后向上、再向左绕过顶部,末端是一根细竖杆 + 箭头,
- *   箭头尖垂直戳在长方形的上长边上。
- *   "再弯一次"是为了让右接线柱也能回到对称轴,课本图里它从上方接入。
+/* 滑动变阻器(标准画法,2026-10-21 用户确认):
+ *   长方形电阻体居中,左右两个接线柱都落在长方形的水平对称轴上;
+ *   右端接线柱引出后向上、再向左绕过顶部,末端是一根细竖杆,
+ *   竖杆末端是开口 V 形箭头,箭头尖垂直戳在长方形的上长边上。
+ *
+ *   课本原图里右接线柱是从右下方直接接出的;"向上绕到顶部"这一步
+ *   是为了让两个接线柱都落在对称轴上、便于按格边渲染。用户认可
+ *   这个折中,不要再加折角或留空隙。
  *
  * 整个符号必须留在 ±HALF(20) 的格子里,否则会和相邻导线重叠。
  * 局部坐标:x 沿元件方向,y 负方向为"上方"。 */
@@ -113,8 +116,6 @@ const RH_HH = 5;           /* 半高 */
 const RH_STUB = 15;        /* 右接线柱折点 x(向上) */
 const RH_TOP = -13;        /* 顶部绕行高度 */
 const RH_WX0 = -7, RH_WX1 = 7;   /* 滑片尖可达范围 */
-const RH_ARROW = 4.6;      /* 箭头长度(从开口到尖端) */
-const RH_FOLD = 3.4;       /* 导线末端的向外折 */
 
 BUILDERS[T.RHEOSTAT] = function (g, angle, props) {
   /* 左右接线柱:都在 y=0(对称轴) */
@@ -131,24 +132,19 @@ BUILDERS[T.RHEOSTAT] = function (g, angle, props) {
   const w = clamp(props && props.wiper == null ? 1 : props.wiper, 0, 1);
   const wx = lerp(RH_WX0, RH_WX1, w);
 
-  /* 右接线柱:向右 → 向上 → 向左绕过顶部 → 下折。
-     导线末端在箭头外侧再折一下(RH_FOLD),从侧面接上箭头根部:
-     这样导线不会顺着箭头轴线一直指到电阻上,视觉上"导线止于箭头,
-     箭头才接触电阻"。 */
+  /* 右接线柱:向右 → 向上 → 向左绕过顶部 → 细竖杆 */
   el('path', {
     d: 'M ' + RH_STUB + ' 0 L ' + RH_STUB + ' ' + RH_TOP +
-       ' L ' + (wx + RH_FOLD) + ' ' + RH_TOP +
-       ' L ' + (wx + RH_FOLD) + ' ' + (-RH_HH - RH_ARROW) +
-       ' L ' + wx + ' ' + (-RH_HH - RH_ARROW),
+       ' L ' + wx + ' ' + RH_TOP + ' L ' + wx + ' ' + (-RH_HH - 2),
     class: 'thin rheo-over',
     fill: 'none'
   }, g);
 
   /* 箭头:细线 + 开口 V 形箭头(课本画法),尖戳在上长边上 */
   const tip = el('path', {
-    d: 'M ' + (wx - 2.6) + ' ' + (-RH_HH - RH_ARROW) +
+    d: 'M ' + (wx - 2.6) + ' ' + (-RH_HH - 4.6) +
        ' L ' + wx + ' ' + (-RH_HH) +
-       ' L ' + (wx + 2.6) + ' ' + (-RH_HH - RH_ARROW),
+       ' L ' + (wx + 2.6) + ' ' + (-RH_HH - 4.6),
     class: 'rheo-arrow',
     fill: 'none'
   }, g);
@@ -240,16 +236,14 @@ function setWiper(hooks, wiper) {
   if (!tip || !tip.setAttribute) return;
   const x = lerp(RH_WX0, RH_WX1, clamp(wiper == null ? 1 : wiper, 0, 1));
   tip.setAttribute('d',
-    'M ' + (x - 2.6) + ' ' + (-RH_HH - RH_ARROW) +
+    'M ' + (x - 2.6) + ' ' + (-RH_HH - 4.6) +
     ' L ' + x + ' ' + (-RH_HH) +
-    ' L ' + (x + 2.6) + ' ' + (-RH_HH - RH_ARROW));
+    ' L ' + (x + 2.6) + ' ' + (-RH_HH - 4.6));
   const path = tip.parentNode && tip.parentNode.querySelector('path.rheo-over');
   if (path) {
     path.setAttribute('d',
       'M ' + RH_STUB + ' 0 L ' + RH_STUB + ' ' + RH_TOP +
-      ' L ' + (x + RH_FOLD) + ' ' + RH_TOP +
-      ' L ' + (x + RH_FOLD) + ' ' + (-RH_HH - RH_ARROW) +
-      ' L ' + x + ' ' + (-RH_HH - RH_ARROW));
+      ' L ' + x + ' ' + RH_TOP + ' L ' + x + ' ' + (-RH_HH - 2));
   }
 }
 
