@@ -113,6 +113,8 @@ const RH_HH = 5;           /* 半高 */
 const RH_STUB = 15;        /* 右接线柱折点 x(向上) */
 const RH_TOP = -13;        /* 顶部绕行高度 */
 const RH_WX0 = -7, RH_WX1 = 7;   /* 滑片尖可达范围 */
+const RH_ARROW = 4.6;      /* 箭头长度(从开口到尖端) */
+const RH_FOLD = 3.4;       /* 导线末端的向外折 */
 
 BUILDERS[T.RHEOSTAT] = function (g, angle, props) {
   /* 左右接线柱:都在 y=0(对称轴) */
@@ -129,19 +131,24 @@ BUILDERS[T.RHEOSTAT] = function (g, angle, props) {
   const w = clamp(props && props.wiper == null ? 1 : props.wiper, 0, 1);
   const wx = lerp(RH_WX0, RH_WX1, w);
 
-  /* 右接线柱:向右 → 向上 → 向左绕过顶部 → 细竖杆 */
+  /* 右接线柱:向右 → 向上 → 向左绕过顶部 → 下折。
+     导线末端在箭头外侧再折一下(RH_FOLD),从侧面接上箭头根部:
+     这样导线不会顺着箭头轴线一直指到电阻上,视觉上"导线止于箭头,
+     箭头才接触电阻"。 */
   el('path', {
     d: 'M ' + RH_STUB + ' 0 L ' + RH_STUB + ' ' + RH_TOP +
-       ' L ' + wx + ' ' + RH_TOP + ' L ' + wx + ' ' + (-RH_HH - 2),
+       ' L ' + (wx + RH_FOLD) + ' ' + RH_TOP +
+       ' L ' + (wx + RH_FOLD) + ' ' + (-RH_HH - RH_ARROW) +
+       ' L ' + wx + ' ' + (-RH_HH - RH_ARROW),
     class: 'thin rheo-over',
     fill: 'none'
   }, g);
 
   /* 箭头:细线 + 开口 V 形箭头(课本画法),尖戳在上长边上 */
   const tip = el('path', {
-    d: 'M ' + (wx - 2.6) + ' ' + (-RH_HH - 4.6) +
+    d: 'M ' + (wx - 2.6) + ' ' + (-RH_HH - RH_ARROW) +
        ' L ' + wx + ' ' + (-RH_HH) +
-       ' L ' + (wx + 2.6) + ' ' + (-RH_HH - 4.6),
+       ' L ' + (wx + 2.6) + ' ' + (-RH_HH - RH_ARROW),
     class: 'rheo-arrow',
     fill: 'none'
   }, g);
@@ -233,14 +240,16 @@ function setWiper(hooks, wiper) {
   if (!tip || !tip.setAttribute) return;
   const x = lerp(RH_WX0, RH_WX1, clamp(wiper == null ? 1 : wiper, 0, 1));
   tip.setAttribute('d',
-    'M ' + (x - 2.6) + ' ' + (-RH_HH - 4.6) +
+    'M ' + (x - 2.6) + ' ' + (-RH_HH - RH_ARROW) +
     ' L ' + x + ' ' + (-RH_HH) +
-    ' L ' + (x + 2.6) + ' ' + (-RH_HH - 4.6));
+    ' L ' + (x + 2.6) + ' ' + (-RH_HH - RH_ARROW));
   const path = tip.parentNode && tip.parentNode.querySelector('path.rheo-over');
   if (path) {
     path.setAttribute('d',
       'M ' + RH_STUB + ' 0 L ' + RH_STUB + ' ' + RH_TOP +
-      ' L ' + x + ' ' + RH_TOP + ' L ' + x + ' ' + (-RH_HH - 2));
+      ' L ' + (x + RH_FOLD) + ' ' + RH_TOP +
+      ' L ' + (x + RH_FOLD) + ' ' + (-RH_HH - RH_ARROW) +
+      ' L ' + x + ' ' + (-RH_HH - RH_ARROW));
   }
 }
 
