@@ -38,8 +38,13 @@ const opts = ref({
   electrons: false,
   potential: false,
   phiLabels: false,
-  efield: false
+  efield: false,
+  micro: false,
+  surfaceQ: true,
+  poynting: true
 })
+/* 「微观」子图层小菜单(表面电荷/能量流);点外面收起 */
+const microMenu = ref(false)
 /* 电铃声音开关(状态读写都在 bell-toggle 里,localStorage 持久化) */
 const bellOn = ref(bellSoundOn())
 
@@ -76,12 +81,12 @@ const tourSteps = [
     text: '元件吸附在网格线上,共点即相连。<br>空格拖拽平移、滚轮缩放,按 F 一键适配视图。'
   },
   {
-    target: ['.layers .ff-btn:nth-child(1)', '.layers', '.topbar'],
+    target: ['.layers > .ff-btn:nth-child(1)', '.layers', '.topbar'],
     title: '看电流怎么流',
     text: '「电流」显示正电荷的流动方向,「电子流向」反向。<br>粒子速度跟电流大小走:电流越大,跑得越快。'
   },
   {
-    target: ['.layers .ff-btn:nth-child(3)', '.layers', '.topbar'],
+    target: ['.layers > .ff-btn:nth-child(3)', '.layers', '.topbar'],
     title: '看电势怎么降',
     text: '「电势」用颜色标出每个点的电势高低,「电势数值」直接写出 φ。<br>导线是等势体,所以整段同色 —— 这正是 U=0 的意思。'
   },
@@ -231,6 +236,7 @@ function doRedo() {
 onMounted(() => {
   /* 上次关过铃音的话,这里同步一次;bell-audio 默认开,不压就是响 */
   if (!bellSoundOn()) setBellSound(false)
+  window.addEventListener('pointerdown', onMicroOutside, true)
 
   /* 作品库条目优先,其次分享链接,其次预置,最后空白 */
   const libId = route.query.lib
@@ -310,6 +316,7 @@ watch(() => props.id, (id) => {
 
 onBeforeUnmount(() => {
   bus.off('changed', onChanged)
+  window.removeEventListener('pointerdown', onMicroOutside, true)
   if (saveTipTimer) clearTimeout(saveTipTimer)
 })
 
@@ -344,6 +351,10 @@ function onPlaced() { selectedKey.value = null }
 
 function toggle(layer) {
   opts.value = { ...opts.value, [layer]: !opts.value[layer] }
+}
+
+function onMicroOutside(ev) {
+  if (microMenu.value && !ev.target.closest('.micro-ctl')) microMenu.value = false
 }
 
 /* 电流 / 电子流向是一个三态开关:关闭 · 电流 · 电子流向。
@@ -383,6 +394,14 @@ const stateText = computed(() => {
         <button class="ff-btn ghost" :class="{ on: opts.potential }" @click="toggle('potential')">电势</button>
         <button class="ff-btn ghost" :class="{ on: opts.phiLabels }" @click="toggle('phiLabels')">电势数值</button>
         <button class="ff-btn ghost" :class="{ on: opts.efield }" @click="toggle('efield')">电场</button>
+        <span class="micro-ctl">
+          <button class="ff-btn ghost" :class="{ on: opts.micro }" :aria-pressed="opts.micro" @click="toggle('micro')" title="真实物理模式:表面电荷 · 显微镜头 · 能量流">微观</button>
+          <button class="ff-btn ghost micro-caret" :class="{ on: microMenu }" aria-label="微观子图层" @click.stop="microMenu = !microMenu">▾</button>
+          <div v-if="microMenu" class="micro-pop" @pointerdown.stop @click.stop>
+            <label><input type="checkbox" v-model="opts.surfaceQ">表面电荷</label>
+            <label><input type="checkbox" v-model="opts.poynting">能量流</label>
+          </div>
+        </span>
         <button class="ff-btn ghost" :class="{ on: bellOn }" @click="toggleBell" title="电铃声音">铃音</button>
       </nav>
       <span class="state" :class="solution?.status">{{ stateText }}</span>
@@ -517,6 +536,33 @@ const stateText = computed(() => {
 .title { font-family: var(--serif); font-size: 18px; font-weight: 900; }
 .layers { display: flex; gap: 2px; }
 .layers .on { color: var(--vermilion); background: var(--vermilion-soft); }
+
+/* 「微观」开关 + 子图层小菜单 */
+.micro-ctl { position: relative; display: flex; gap: 2px; }
+.micro-caret { padding: 4px 5px; }
+.micro-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 128px;
+  padding: 8px 10px;
+  background: var(--paper-panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgba(44, 40, 34, 0.16);
+}
+.micro-pop label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink);
+  padding: 3px 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.micro-pop input { accent-color: var(--vermilion); }
 .state {
   margin-left: auto; font-family: var(--mono); font-size: 12px;
   padding: 2px 10px; border: 1px solid var(--hairline); border-radius: var(--radius);

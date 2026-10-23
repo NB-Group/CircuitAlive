@@ -17,6 +17,8 @@ import { T, GRID, clamp, lerp, nodeKey, edgeKey, fmt, svgEl } from './util.js';
 import { symbols } from './symbols.js';
 import { solver } from './solver.js';
 import { createBellAudio } from './bell-audio.js';
+import { computeSurfaceCharges, buildPoyntingFlows } from './micro.js';
+import { createLens } from './lens.js';
 
 const G = GRID;
 
@@ -118,7 +120,8 @@ function makeRenderer(svg) {
     sol: null,
     edgeEls: new Map(),   /* edgeId -> {group, sym, hit, text:{}, hooks, type, tr, key} */
     version: 0,
-    opts: { particles: true, electrons: false, potential: false, phiLabels: false, efield: false },
+    opts: { particles: true, electrons: false, potential: false, phiLabels: false, efield: false,
+             micro: false, surfaceQ: true, poynting: true },
     bellAudio: createBellAudio(),
     view: { x: -60, y: -60, w: 920, h: 640 },
     probeKey: null,
@@ -129,12 +132,13 @@ function makeRenderer(svg) {
     pcanvas: null,   /* 粒子 canvas(由宿主组件提供) */
     pctx: null,
     pdpr: 1,
-    prect: null     /* 最近一次与 svg 对齐时的屏幕矩形 */
+    prect: null,     /* 最近一次与 svg 对齐时的屏幕矩形 */
+    lens: null       /* 显微镜头(真实物理模式) */
   };
 
   /* ---------- 图层 ---------- */
 
-  const LAYER_NAMES = ['defs', 'grid', 'underlay', 'edges', 'junctions', 'efield', 'readings', 'symbol-text', 'overlay'];
+  const LAYER_NAMES = ['defs', 'grid', 'underlay', 'surface', 'edges', 'junctions', 'efield', 'poynting', 'readings', 'symbol-text', 'overlay'];
 
   function ensureLayers() {
     let root = svg.querySelector('g.ff-scene');
@@ -193,8 +197,10 @@ function makeRenderer(svg) {
       if (!g) g = svgEl('g', { 'data-layer': name }, parent);
       R.layers[name] = g;
     });
-    /* 层级顺序固定(防止 Vue 模板顺序变动) */
-    const order = ['grid', 'underlay', 'edges', 'junctions', 'efield', 'readings', 'symbol-text'];
+    /* 层级顺序固定(防止 Vue 模板顺序变动)。
+       surface 在 edges 之下:记号贴着导线又不糊符号;poynting 在
+       efield 之上、读数之下 —— 能量流画在"空间"里。 */
+    const order = ['grid', 'underlay', 'surface', 'edges', 'junctions', 'efield', 'poynting', 'readings', 'symbol-text'];
     order.forEach((name) => root.appendChild(R.layers[name]));
     ovRoot.appendChild(R.layers.overlay);
   }
@@ -519,6 +525,8 @@ function makeRenderer(svg) {
     R.layers.underlay.innerHTML = '';
     R.layers.efield.innerHTML = '';
     R.layers.readings.innerHTML = '';
+    R.layers.surface.innerHTML = '';
+    R.layers.poynting.innerHTML = '';
     R.gradGroup.innerHTML = '';
 
     const live = sol.Imax > 1e-3;
@@ -650,9 +658,51 @@ function makeRenderer(svg) {
       });
     }
 
+    /* ---- 真实物理模式的两层 ---- */
+    if (R.opts.micro && R.opts.surfaceQ) drawSurfaceCharges(m, sol);
+    if (R.opts.micro && R.opts.poynting) drawPoynting(m, sol);
+
     syncParticles();
     applyProbeMarker();
     applySelection();
+
+    if (R.lens) R.lens.notifySolution();
+  }
+
+  /* 表面电荷:σ ∝ (φ − φ̄)。与电势着色同色编码(正朱红/负群青),
+   * 两个模式同屏时"φ 高低 ↔ 记号多少"互相印证。 */
+  function drawSurfaceCharges(m, sol) {
+    const marks = computeSurfaceCharges(m.list(), sol);
+    marks.forEach((k) => {
+      const g = svgEl('g', {
+        class: k.q > 0 ? 'ff-sq-plus' : 'ff-sq-minus',
+        transform: 'translate(' + k.x.toFixed(1) + ',' + k.y.toFixed(1) + ')',
+        opacity: (0.22 + 0.62 * Math.abs(k.q)).toFixed(2)
+      }, R.layers.surface);
+      if (k.q > 0) {
+        svgEl('line', { x1: -1.6, y1: 0, x2: 1.6, y2: 0 }, g);
+        svgEl('line', { x1: 0, y1: -1.6, x2: 0, y2: 1.6 }, g);
+      } else {
+        svgEl('line', { x1: -1.8, y1: 0, x2: 1.8, y2: 0 }, g);
+      }
+    });
+  }
+
+  /* 坡印廷能量流:电池两端 → 耗能处,纯 CSS dash 动画(零每帧 JS)。 */
+  function drawPoynting(m, sol) {
+    const flows = buildPoyntingFlows(m.list(), sol, m.wireR);
+    flows.forEach((f) => {
+      svgEl('path', {
+        d: f.d, class: 'ff-poynting',
+        'stroke-width': f.width.toFixed(2),
+        style: 'animation-duration:' + f.dur.toFixed(2) + 's'
+      }, R.layers.poynting);
+      svgEl('polygon', {
+        class: 'ff-poynting-arrow',
+        transform: 'translate(' + f.arrow.x.toFixed(1) + ',' + f.arrow.y.toFixed(1) + ') rotate(' + f.arrow.angle.toFixed(1) + ')',
+        points: '0,0 -6,-3 -6,3'
+      }, R.layers.poynting);
+    });
   }
 
   /* 电场箭头:方向 高电势 → 低电势。长度按本电路最大压降自适应 */
@@ -871,6 +921,7 @@ function makeRenderer(svg) {
     });
 
     drawParticles();
+    if (R.lens) R.lens.step(dt, now);
 
     /* 灯泡亮度向目标平滑逼近(开关闭合渐亮、断路渐灭、滑片连续调光) */
     lampAnims.forEach((a) => {
@@ -884,7 +935,9 @@ function makeRenderer(svg) {
       symbols.setGlow(a.el, a.cur);
     });
 
-    if (!R.destroyed && (pools.size || !lampsSettled())) R.raf = requestAnimationFrame(tick);
+    /* 微观模式的镜头要持续动画(电子海/热运动),即使没有电流 */
+    const lensLive = R.lens && R.lens.active();
+    if (!R.destroyed && (pools.size || !lampsSettled() || lensLive)) R.raf = requestAnimationFrame(tick);
     else R.raf = null;
   }
 
@@ -893,7 +946,8 @@ function makeRenderer(svg) {
      所有粒子重建成"两枚新圆点"(位置 0,0 → 首帧才摆好),
      看起来就是整屏闪一下。现在按 id 复用元素,只在数量变化时增删。 */
   function ensureRaf() {
-    if (!R.raf && !R.destroyed && !document.hidden && (pools.size || !lampsSettled())) {
+    const lensLive = R.lens && R.lens.active();
+    if (!R.raf && !R.destroyed && !document.hidden && (pools.size || !lampsSettled() || lensLive)) {
       R.lastT = performance.now();
       R.raf = requestAnimationFrame(tick);
     }
@@ -1008,6 +1062,17 @@ function makeRenderer(svg) {
   buildGrid();      /* 必须在 buildDefs 之后:pattern 定义在 defs 里 */
   applyView();
 
+  /* 显微镜头:惰性建 DOM(首次开微观才出现),自听 window 指针,
+   * 画布组件零改动。pinned 锚点换算在每帧 step 里做,无需订阅 viewport。 */
+  R.lens = createLens(svg.parentElement, {
+    screenToWorld,
+    hitEdge,
+    view: () => R.view,
+    getModel: () => R.model,
+    getSol: () => R.sol,
+    getOpts: () => R.opts
+  });
+
   let ro = null;
   if (typeof ResizeObserver !== 'undefined') {
     ro = new ResizeObserver(() => { applyView(); sizeParticleCanvas(); });
@@ -1018,6 +1083,7 @@ function makeRenderer(svg) {
 
   function destroy() {
     R.destroyed = true;
+    if (R.lens) R.lens.destroy();
     if (R.pcanvas && R.pctx) R.pctx.clearRect(0, 0, R.pcanvas.width, R.pcanvas.height);
     if (R.pcanvas && R.pcanvas.parentElement) R.pcanvas.remove();
     if (R.ovSvg && R.ovSvg.parentElement) R.ovSvg.remove();
@@ -1052,7 +1118,9 @@ function makeRenderer(svg) {
 
     setOpts(opts) {
       Object.assign(R.opts, opts || {});
+      if (R.lens) R.lens.setActive(!!R.opts.micro);
       if (R.sol) syncSolution();
+      ensureRaf();
     },
 
     select(key) { R.selKey = key; applySelection(); },

@@ -416,6 +416,122 @@ async function main() {
       await fresh.close()
     })
 
+    await test('微观开关:表面电荷出现,可与电势同屏,再点清空', async () => {
+      const fresh = await ctx.newPage()
+      await fresh.goto(base + '#/edit?preset=series', { waitUntil: 'networkidle' })
+      await fresh.waitForSelector('.ff-stage')
+      /* 预置开关默认断开 → 断路也有表面电荷(教学点) */
+      const micro = fresh.getByRole('button', { name: '微观', exact: true })
+      const count = (sel) => fresh.evaluate((s) => document.querySelectorAll(s).length, sel)
+      if (await count('[data-layer="surface"] *') !== 0) throw new Error('未开微观不应有表面电荷')
+
+      await micro.click(); await fresh.waitForTimeout(250)
+      const nOn = await count('[data-layer="surface"] *')
+      if (nOn < 10) throw new Error('开微观后表面电荷太少: ' + nOn)
+      if (!/on/.test(await micro.getAttribute('class'))) throw new Error('微观按钮没有高亮')
+
+      /* 与电势着色同屏:两个图层共存 */
+      await fresh.getByRole('button', { name: '电势', exact: true }).click()
+      await fresh.waitForTimeout(250)
+      if (await count('[data-layer="surface"] *') < 10) throw new Error('与电势同屏时表面电荷消失')
+      const grads = await fresh.evaluate(() => document.querySelectorAll('#potential-grads linearGradient').length)
+      if (grads < 1) throw new Error('电势渐变没有出现')
+
+      /* 关微观:两图层都清空 */
+      await micro.click(); await fresh.waitForTimeout(250)
+      if (await count('[data-layer="surface"] *') !== 0) throw new Error('关微观后表面电荷没清空')
+      await fresh.close()
+    })
+
+    await test('微观能量流:可单独开关,虚线沿路径流动', async () => {
+      const fresh = await ctx.newPage()
+      /* 用本来就通电的题目电路(r-2024-19 电流表有读数) */
+      await fresh.goto(base + '#/problem/r-2024-19', { waitUntil: 'networkidle' })
+      await fresh.waitForSelector('.ff-stage')
+      await fresh.getByRole('button', { name: '微观', exact: true }).click()
+      await fresh.waitForTimeout(400)
+      const nFlow = await fresh.evaluate(() => document.querySelectorAll('[data-layer="poynting"] .ff-poynting').length)
+      if (nFlow < 1) throw new Error('通电电路应有能量流')
+      const anim = await fresh.evaluate(() => {
+        const p = document.querySelector('.ff-poynting')
+        return p ? getComputedStyle(p).animationName : ''
+      })
+      if (anim !== 'ff-poynting-flow') throw new Error('能量流应有 CSS 流动动画, got ' + anim)
+
+      /* 子层菜单:取消能量流 → 图层清空;表面电荷仍在 */
+      await fresh.getByRole('button', { name: '微观子图层' }).click()
+      await fresh.waitForTimeout(150)
+      await fresh.locator('.micro-pop label', { hasText: '能量流' }).click()
+      await fresh.waitForTimeout(300)
+      if (await fresh.evaluate(() => document.querySelectorAll('[data-layer="poynting"] .ff-poynting').length) !== 0) {
+        throw new Error('取消能量流后没有清空')
+      }
+      if (await fresh.evaluate(() => document.querySelectorAll('[data-layer="surface"] *').length) < 1) {
+        throw new Error('取消能量流不应影响表面电荷')
+      }
+      /* 勾回来 */
+      await fresh.locator('.micro-pop label', { hasText: '能量流' }).click()
+      await fresh.waitForTimeout(300)
+      if (await fresh.evaluate(() => document.querySelectorAll('[data-layer="poynting"] .ff-poynting').length) < 1) {
+        throw new Error('重新勾选能量流没有恢复')
+      }
+      await fresh.close()
+    })
+
+    await test('显微镜头:跟随指针、点击钉住、内容随元件切换', async () => {
+      const fresh = await ctx.newPage()
+      await fresh.goto(base + '#/problem/r-2024-19', { waitUntil: 'networkidle' })
+      await fresh.waitForSelector('.ff-stage')
+      await fresh.getByRole('button', { name: '微观', exact: true }).click()
+      await fresh.waitForTimeout(300)
+      await fresh.waitForSelector('.ff-lens', { state: 'attached' })
+      if (!(await fresh.locator('.ff-lens').isVisible())) throw new Error('镜头不可见')
+
+      /* 跟随:两次 move 位置不同 */
+      const box = await fresh.locator('.ff-stage').boundingBox()
+      const lensBox = () => fresh.locator('.ff-lens-body').boundingBox()
+      await fresh.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5)
+      await fresh.waitForTimeout(200)
+      const b1 = await lensBox()
+      await fresh.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5)
+      await fresh.waitForTimeout(200)
+      const b2 = await lensBox()
+      if (Math.abs(b1.x - b2.x) < 5) throw new Error('镜头没有跟随指针')
+
+      /* 镜头移到电池上:HUD 显示电池。用元件标签(sym-tag「E」)定位 */
+      const batPos = await fresh.evaluate(() => {
+        const t = Array.from(document.querySelectorAll('.sym-tag')).find((el) => /^E/.test(el.textContent))
+        if (!t) return null
+        const r = t.getBoundingClientRect()
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 + 30 }
+      })
+      if (batPos) {
+        await fresh.mouse.move(batPos.x, batPos.y)
+        await fresh.waitForTimeout(400)
+        const chip = await fresh.locator('.ff-lens-chip').textContent()
+        if (!chip.includes('电池')) throw new Error('镜头在电池上应显示电池: ' + chip)
+      }
+
+      /* 点击镜头圆心 → 钉住;move 后位置不变;再点恢复跟随 */
+      const lb = await lensBox()
+      const cx = lb.x + lb.width / 2, cy = lb.y + lb.height / 2
+      await fresh.mouse.click(cx, cy)
+      await fresh.waitForTimeout(200)
+      if (!(await fresh.locator('.ff-lens').evaluate((el) => el.classList.contains('pinned')))) {
+        throw new Error('点击镜头应钉住')
+      }
+      await fresh.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.3)
+      await fresh.waitForTimeout(250)
+      const b3 = await lensBox()
+      if (Math.abs(b3.x - lb.x) > 2) throw new Error('钉住后镜头不应随指针移动')
+      await fresh.mouse.click(cx, cy)
+      await fresh.waitForTimeout(200)
+      if (await fresh.locator('.ff-lens').evaluate((el) => el.classList.contains('pinned'))) {
+        throw new Error('再点应取消钉住')
+      }
+      await fresh.close()
+    })
+
     await test('单击滑变弹出滑条,拖动实时改阻值,一次拖动一步撤销', async () => {
       await page.goto(base + '#/problem/r-2013-22', { waitUntil: 'networkidle' })
       await page.waitForSelector('[data-hook="wiper"]', { state: 'attached' })

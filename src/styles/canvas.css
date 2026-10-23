@@ -47,8 +47,10 @@
 
 /* 只有元件边层接收指针;其余层穿透 */
 .ff-canvas [data-layer="underlay"],
+.ff-canvas [data-layer="surface"],
 .ff-canvas [data-layer="junctions"],
 .ff-canvas [data-layer="efield"],
+.ff-canvas [data-layer="poynting"],
 .ff-canvas [data-layer="readings"],
 .ff-canvas [data-layer="symbol-text"],
 .ff-canvas [data-layer="overlay"] {
@@ -513,3 +515,87 @@ html[data-theme='dark'] .ff-canvas [data-layer="underlay"] { opacity: 0.55; }
 .ff-canvas .overlay-clone text { paint-order: stroke; stroke: var(--paper); stroke-width: 3px; }
 
 
+
+/* ============ 真实物理模式 ============ */
+
+/* 表面电荷记号:与电势着色同色编码(正朱红/负群青),
+   两个模式同屏时"φ 高低 ↔ 记号多少"互相印证 */
+.ff-canvas .ff-sq-plus line,
+.ff-canvas .ff-sq-minus line {
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+.ff-canvas .ff-sq-plus line { stroke: var(--vermilion); }
+.ff-canvas .ff-sq-minus line { stroke: var(--indigo); }
+
+/* 坡印廷能量流:电池两端 → 耗能处。琥珀色,虚线沿路径正向流动
+   (dashoffset 负向),线宽/时长由 micro.js 按功率设置 */
+.ff-canvas .ff-poynting {
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-dasharray: 7 8;
+  opacity: 0.78;
+  animation: ff-poynting-flow 1.4s linear infinite;
+}
+.ff-canvas .ff-poynting-arrow {
+  fill: var(--amber);
+  stroke: none;
+  opacity: 0.9;
+}
+@keyframes ff-poynting-flow {
+  to { stroke-dashoffset: -15; }
+}
+
+/* 显微镜头:画布内浮层,检查器模糊不影响它(不在 .ff-scene-wrap 内) */
+.ff-canvas .ff-lens {
+  position: absolute;
+  width: 132px;
+  z-index: 3;                    /* 粒子之上、overlay-stage 之下 */
+  pointer-events: none;          /* follow 态穿透;body 自身可点 */
+  transition: opacity 160ms ease;
+}
+.ff-canvas .ff-lens-body {
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1.5px solid var(--ink);
+  box-shadow: 0 2px 10px rgba(44, 40, 34, 0.22), inset 0 0 0 2px var(--paper);
+  background: var(--paper);
+  pointer-events: auto;          /* 悬停冻结/点选电子/钉住 */
+  touch-action: none;
+  cursor: pointer;
+}
+.ff-canvas .ff-lens.pinned .ff-lens-body {
+  border-color: var(--vermilion);
+  box-shadow: 0 2px 12px rgba(44, 40, 34, 0.3), inset 0 0 0 2px var(--paper);
+  cursor: grab;
+}
+.ff-canvas .ff-lens-cv { display: block; width: 132px; height: 132px; }
+
+/* 镜头读数条:等宽字体,贴镜头下方 */
+.ff-canvas .ff-lens-chip {
+  margin-top: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--paper-panel);
+  box-shadow: 0 1px 5px rgba(44, 40, 34, 0.14);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.ff-canvas .ff-lens-chip b {
+  display: block;
+  font-family: var(--serif);
+  font-size: 11.5px;
+  color: var(--ink);
+}
+.ff-canvas .ff-lens-chip span { display: block; }
+.ff-canvas .ff-lens-chip sub { font-size: 8px; }
+.ff-canvas .ff-lens-chip .lens-sel { color: var(--vermilion); }
