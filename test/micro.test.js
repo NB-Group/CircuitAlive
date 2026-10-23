@@ -9,7 +9,7 @@ import { T, nodeKey, GRID } from '../src/core/util.js'
 import { solver } from '../src/core/solver.js'
 import {
   computeSurfaceCharges, componentRefs, buildPoyntingFlows,
-  lensKindOf, lensFacts, scatterRateOf, createLensSim, mulberry32,
+  lensKindOf, lensFacts, scatterRateOf, createMicroPool, mulberry32,
   EDGE_LEN_M, VD_PER_A
 } from '../src/core/micro.js'
 
@@ -247,48 +247,44 @@ test('散射率表:电阻远大于导线,滑变随滑片单调', () => {
   assert.ok(w1 > w0, '接入越长散射越频繁')
 })
 
-test('Drude 模拟:漂移恒定与散射率无关(wire ν=0.7 vs resistor ν=7)', () => {
+test('Drude 池:漂移恒定与散射率无关(wire ν=0.7 vs resistor ν=7)', () => {
   for (const nu of [0.7, 7]) {
-    const sim = createLensSim({ kind: 'metal', radius: 66, vd: 40, scatter: nu }, mulberry32(7))
+    const sim = createMicroPool({ len: 40, drift: 12, scatter: nu }, mulberry32(7))
     const dt = 1 / 30
-    let x0 = 0
-    sim.agents.forEach(a => x0 += a.x)
-    x0 /= sim.agents.length
-    for (let i = 0; i < 1800; i++) sim.step(dt)   /* 60 s */
-    let x1 = 0
-    sim.agents.forEach(a => x1 += a.x)
-    x1 /= sim.agents.length
-    /* 回绕会破坏均值位移 → 用 meanVx 瞬时均值代替:全程断言 */
-    let mv = 0, n = 0
-    for (let i = 0; i < 300; i++) { sim.step(dt); mv += sim.meanVx(); n++ }
-    mv /= n
-    assert.ok(Math.abs(mv - 40) <= Math.max(0.08 * 40, 3),
-      'ν=' + nu + ' 平均速度应 ≈ v_d=40, got ' + mv.toFixed(2))
-    /* 出界回绕:所有 agent 都在方内 */
-    sim.agents.forEach(a => {
-      assert.ok(Math.abs(a.x) <= 66 + 0.5 && Math.abs(a.y) <= 66 + 0.5, '回绕生效')
-    })
+    const T = 30
+    /* 回绕感知的累计推进:mean Δt ≈ drift/L·T */
+    let adv = 0
+    for (let i = 0; i < T / dt; i++) {
+      const prev = sim.agents.map(a => a.t)
+      sim.step(dt)
+      sim.agents.forEach((a, k) => { adv += (a.t - prev[k] + 1.5) % 1 - 0.5 })
+    }
+    const meanAdv = adv / sim.agents.length
+    assert.ok(Math.abs(meanAdv - 12 / 40 * T) < 1e-6,
+      'ν=' + nu + ' 平均推进应精确 = drift/L·T, got ' + meanAdv)
+    /* 电子始终在导线带内 */
+    sim.agents.forEach(a => assert.ok(Math.abs(a.y) <= 2.6 + 1e-9, 'y 带钳制生效'))
   }
 })
 
-test('Drude 模拟:同种子同轨迹;散射计数 ∝ ν;换参数不重播种', () => {
-  const a = createLensSim({ kind: 'metal', radius: 66, vd: 20, scatter: 7 }, mulberry32(3))
-  const b = createLensSim({ kind: 'metal', radius: 66, vd: 20, scatter: 7 }, mulberry32(3))
+test('Drude 池:同种子同轨迹;散射计数 ∝ ν;换参数不重播种', () => {
+  const a = createMicroPool({ len: 40, drift: 8, scatter: 7 }, mulberry32(3))
+  const b = createMicroPool({ len: 40, drift: 8, scatter: 7 }, mulberry32(3))
   for (let i = 0; i < 100; i++) { a.step(1 / 30); b.step(1 / 30) }
-  assert.deepEqual(a.agents.map(x => [x.x.toFixed(3), x.y.toFixed(3)]),
-    b.agents.map(x => [x.x.toFixed(3), x.y.toFixed(3)]), '确定性')
+  assert.deepEqual(a.agents.map(x => [x.t.toFixed(4), x.y.toFixed(4)]),
+    b.agents.map(x => [x.t.toFixed(4), x.y.toFixed(4)]), '确定性')
 
-  const slow = createLensSim({ kind: 'metal', radius: 66, vd: 20, scatter: 0.7 }, mulberry32(5))
-  const fast = createLensSim({ kind: 'metal', radius: 66, vd: 20, scatter: 7 }, mulberry32(5))
+  const slow = createMicroPool({ len: 40, drift: 8, scatter: 0.7 }, mulberry32(5))
+  const fast = createMicroPool({ len: 40, drift: 8, scatter: 7 }, mulberry32(5))
   for (let i = 0; i < 600; i++) { slow.step(1 / 30); fast.step(1 / 30) }
   assert.ok(fast.scatterTotal() > 3 * slow.scatterTotal(),
     '电阻散射计数应远大于导线: ' + fast.scatterTotal() + ' vs ' + slow.scatterTotal())
 
-  /* 仅参数变化:agent 位置连续 */
-  const pos0 = slow.agents.map(x => x.x + ',' + x.y)
-  slow.setDrift(-20); slow.setScatter(3)
+  /* 仅参数变化:agent 位置连续(先记快照,改参数,走一步,比较非参数部分) */
+  const snap = slow.agents.map(x => x.t)
+  slow.setDrift(-8); slow.setScatter(3)
   slow.step(1 / 30)
-  assert.deepEqual(slow.agents.map(x => x.x + ',' + x.y).length, pos0.length, '不重播种')
+  assert.equal(slow.agents.length, snap.length, '不重播种')
 })
 
 console.log(`\n${passed} 通过, ${failed} 失败`)

@@ -548,41 +548,29 @@ html[data-theme='dark'] .ff-canvas [data-layer="underlay"] { opacity: 0.55; }
   to { stroke-dashoffset: -15; }
 }
 
-/* 显微镜头:画布内浮层,检查器模糊不影响它(不在 .ff-scene-wrap 内) */
-.ff-canvas .ff-lens {
-  position: absolute;
-  width: 132px;
-  z-index: 3;                    /* 粒子之上、overlay-stage 之下 */
-  pointer-events: none;          /* follow 态穿透;body 自身可点 */
-  transition: opacity 160ms ease;
+/* 晶格正离子:导线两侧的微点阵列(电子散射的"障碍物") */
+.ff-canvas .ff-lattice circle {
+  fill: var(--ink-faint);
+  opacity: 0.55;
 }
-.ff-canvas .ff-lens-body {
-  width: 132px;
-  height: 132px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 1.5px solid var(--ink);
-  box-shadow: 0 2px 10px rgba(44, 40, 34, 0.22), inset 0 0 0 2px var(--paper);
-  background: var(--paper);
-  pointer-events: auto;          /* 悬停冻结/点选电子/钉住 */
-  touch-action: none;
-  cursor: pointer;
-}
-.ff-canvas .ff-lens.pinned .ff-lens-body {
-  border-color: var(--vermilion);
-  box-shadow: 0 2px 12px rgba(44, 40, 34, 0.3), inset 0 0 0 2px var(--paper);
-  cursor: grab;
-}
-.ff-canvas .ff-lens-cv { display: block; width: 132px; height: 132px; }
 
-/* 镜头读数条:等宽字体,贴镜头下方 */
-.ff-canvas .ff-lens-chip {
-  margin-top: 6px;
-  padding: 5px 8px;
+/* 电池内的对峙力:化学力(朱红,搬电子)顶着静电场力(灰,反向) */
+.ff-canvas .ff-bf-chem { stroke: var(--vermilion); stroke-width: 1.6; stroke-linecap: round; }
+.ff-canvas .ff-bf-chem-head { fill: var(--vermilion); stroke: none; }
+.ff-canvas .ff-bf-elec { stroke: var(--ink-soft); stroke-width: 1.3; stroke-linecap: round; opacity: 0.85; }
+.ff-canvas .ff-bf-elec-head { fill: var(--ink-soft); stroke: none; opacity: 0.85; }
+
+/* 悬停读数条:微观模式下跟着指针,显示所在边的 I/U/E/v_d */
+.ff-canvas .ff-micro-chip {
+  position: absolute;
+  z-index: 5;                     /* 场景之上、检查器面板(41)之下 */
+  display: none;
+  max-width: 300px;
+  padding: 5px 9px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
   background: var(--paper-panel);
-  box-shadow: 0 1px 5px rgba(44, 40, 34, 0.14);
+  box-shadow: 0 1px 6px rgba(44, 40, 34, 0.16);
   font-family: var(--mono);
   font-size: 10px;
   line-height: 1.7;
@@ -590,12 +578,11 @@ html[data-theme='dark'] .ff-canvas [data-layer="underlay"] { opacity: 0.55; }
   pointer-events: none;
   white-space: nowrap;
 }
-.ff-canvas .ff-lens-chip b {
+.ff-canvas .ff-micro-chip b {
   display: block;
   font-family: var(--serif);
   font-size: 11.5px;
   color: var(--ink);
 }
-.ff-canvas .ff-lens-chip span { display: block; }
-.ff-canvas .ff-lens-chip sub { font-size: 8px; }
-.ff-canvas .ff-lens-chip .lens-sel { color: var(--vermilion); }
+.ff-canvas .ff-micro-chip span { display: block; }
+.ff-canvas .ff-micro-chip sub { font-size: 8px; }

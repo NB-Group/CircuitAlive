@@ -337,56 +337,50 @@ export function lensFacts(e, sol, edges) {
   return out;
 }
 
-/* ---- Drude 简化模拟(纯) --------------------------------------------
- * 漂移是刚性叠加项:pos += (v_th + v_d·x̂)·dt。
- * 不管散射多频繁,电子海的平均速度恒等于 v_d —— 串联路径处处相同。 */
-export function createLensSim(opts, rng) {
-  const r = opts.radius || 66;
+/* ---- Drude 简化模拟(纯,画在导线原位) --------------------------------
+ * 每条边一个 agent 池:电子用 t∈[0,1) 记沿边位置(0=端点a),
+ * y 记垂直于导线的偏移(px),热运动只抖 y(1 维足够表达"磕绊"),
+ * 漂移是刚性叠加项:t += (drift/L)·dt,与散射率无关 ——
+ * 串联处处同漂移靠构造保证,电阻只改"抖得多凶"。
+ * scatter 事件短暂加亮(flash 1→0),电阻里看得见频繁的碰撞闪光。 */
+export function createMicroPool(opts, rng) {
+  const L = opts.len || 40;            /* 边长 px */
+  const band = opts.band || 2.6;       /* 电子偏离导线中线的半宽 */
   const rand = rng || mulberry32(42);
-  const count = opts.kind === 'battery' ? 36 : 42;
-  const VTH = 55;                        /* 热速度 px/s */
+  const count = opts.count || 11;
+  const VY = 9;                        /* 热速度 px/s(垂直方向) */
 
   const agents = [];
-  function newAgent() {
-    return {
-      x: (rand() * 2 - 1) * r,
-      y: (rand() * 2 - 1) * r * 0.97,
-      thx: 0, thy: 0, tS: 0,
-      scatterCount: 0
-    };
-  }
-  function reDir(a) {
-    const ang = rand() * Math.PI * 2;
-    const sp = VTH * (0.85 + rand() * 0.3);
-    a.thx = Math.cos(ang) * sp;
-    a.thy = Math.sin(ang) * sp;
-  }
   for (let i = 0; i < count; i++) {
-    const a = newAgent();
-    reDir(a);
-    a.tS = -Math.log(1 - rand()) / opts.scatter;   /* Exp(ν) 自由飞行 */
-    agents.push(a);
+    agents.push({
+      t: (i + rand() * 0.8) / count,
+      y: (rand() * 2 - 1) * band,
+      vy: (rand() * 2 - 1) * VY,
+      tS: -Math.log(1 - rand()) / (opts.scatter || 0.7),
+      flash: 0,
+      scatterCount: 0
+    });
   }
 
-  let vd = opts.vd || 0;                 /* px/s,沿 +x 带符号 */
-  let nu = opts.scatter || 0.7;          /* 散射率 Hz */
+  let drift = opts.drift || 0;         /* px/s,沿 a→b 带符号 */
+  let nu = opts.scatter || 0.7;
 
   function step(dt) {
     for (const a of agents) {
-      a.x += (a.thx + vd) * dt;
-      a.y += a.thy * dt;
+      a.t += (drift / L) * dt;
+      if (a.t >= 1) a.t -= 1;
+      else if (a.t < 0) a.t += 1;
+      a.y += a.vy * dt;
       a.tS -= dt;
+      a.flash = Math.max(0, a.flash - dt * 6);
       if (a.tS <= 0) {
-        reDir(a);
-        a.scatterCount++;
+        a.vy = (rand() * 2 - 1) * VY;
         a.tS = -Math.log(1 - rand()) / nu;
+        a.flash = 1;
+        a.scatterCount++;
       }
-      /* 圆柱边界:x 回绕,y 出界重随机 */
-      if (a.x > r) a.x -= 2 * r;
-      else if (a.x < -r) a.x += 2 * r;
-      if (Math.abs(a.y) > r * 0.97) {
-        a.y = (rand() * 2 - 1) * r * 0.9;
-      }
+      if (a.y > band) { a.y = band; a.vy = -Math.abs(a.vy); }
+      else if (a.y < -band) { a.y = -band; a.vy = Math.abs(a.vy); }
     }
   }
 
@@ -394,12 +388,11 @@ export function createLensSim(opts, rng) {
     agents,
     step,
     /* 仅参数变化(滑片拖动)不重播种 —— 位置连续,不闪 */
-    setDrift(v) { vd = v; },
+    setDrift(v) { drift = v; },
     setScatter(v) { nu = v; },
-    meanVx() {
-      let s = 0;
-      for (const a of agents) s += a.thx + vd;
-      return s / agents.length;
+    meanDt() {
+      /* 平均 d t/d s = drift/L + 热项(热项均值为 0) */
+      return drift / L;
     },
     scatterTotal() {
       let s = 0;

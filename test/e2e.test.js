@@ -478,56 +478,48 @@ async function main() {
       await fresh.close()
     })
 
-    await test('显微镜头:跟随指针、点击钉住、内容随元件切换', async () => {
+    await test('微观电子海:导线原位渲染 + 悬停读数条', async () => {
       const fresh = await ctx.newPage()
       await fresh.goto(base + '#/problem/r-2024-19', { waitUntil: 'networkidle' })
       await fresh.waitForSelector('.ff-stage')
+      await fresh.waitForTimeout(500)
       await fresh.getByRole('button', { name: '微观', exact: true }).click()
+      await fresh.waitForTimeout(400)
+
+      /* 晶格点阵:导线两侧的微点 */
+      const lattice = await fresh.evaluate(() => document.querySelectorAll('[data-layer="surface"] .ff-lattice circle').length)
+      if (lattice < 40) throw new Error('晶格点太少: ' + lattice)
+
+      /* 电池对峙力箭头(电路通电才有) */
+      const bf = await fresh.evaluate(() => document.querySelectorAll('.ff-bat-force').length)
+      if (bf < 1) throw new Error('电池力箭头没画')
+
+      /* 关掉粗粒子电流:微观模式下画布仍要可见(电子海画在上面) */
+      await fresh.getByRole('button', { name: '电流', exact: true }).click()
       await fresh.waitForTimeout(300)
-      await fresh.waitForSelector('.ff-lens', { state: 'attached' })
-      if (!(await fresh.locator('.ff-lens').isVisible())) throw new Error('镜头不可见')
+      const hidden = await fresh.evaluate(() => {
+        const c = document.querySelector('canvas.ff-particles')
+        return c ? c.hidden : null
+      })
+      if (hidden !== false) throw new Error('微观模式下粒子画布被隐藏了')
 
-      /* 跟随:两次 move 位置不同 */
-      const box = await fresh.locator('.ff-stage').boundingBox()
-      const lensBox = () => fresh.locator('.ff-lens-body').boundingBox()
-      await fresh.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5)
-      await fresh.waitForTimeout(200)
-      const b1 = await lensBox()
-      await fresh.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5)
-      await fresh.waitForTimeout(200)
-      const b2 = await lensBox()
-      if (Math.abs(b1.x - b2.x) < 5) throw new Error('镜头没有跟随指针')
-
-      /* 镜头移到电池上:HUD 显示电池。用元件标签(sym-tag「E」)定位 */
-      const batPos = await fresh.evaluate(() => {
-        const t = Array.from(document.querySelectorAll('.sym-tag')).find((el) => /^E/.test(el.textContent))
+      /* 悬停读数条:移到电阻上显示 I/E 读数 */
+      const pos = await fresh.evaluate(() => {
+        const t = Array.from(document.querySelectorAll('.sym-tag')).find((el) => /^R/.test(el.textContent))
         if (!t) return null
         const r = t.getBoundingClientRect()
-        return { x: r.x + r.width / 2, y: r.y + r.height / 2 + 30 }
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 + 26 }
       })
-      if (batPos) {
-        await fresh.mouse.move(batPos.x, batPos.y)
-        await fresh.waitForTimeout(400)
-        const chip = await fresh.locator('.ff-lens-chip').textContent()
-        if (!chip.includes('电池')) throw new Error('镜头在电池上应显示电池: ' + chip)
-      }
-
-      /* 点击镜头圆心 → 钉住;move 后位置不变;再点恢复跟随 */
-      const lb = await lensBox()
-      const cx = lb.x + lb.width / 2, cy = lb.y + lb.height / 2
-      await fresh.mouse.click(cx, cy)
-      await fresh.waitForTimeout(200)
-      if (!(await fresh.locator('.ff-lens').evaluate((el) => el.classList.contains('pinned')))) {
-        throw new Error('点击镜头应钉住')
-      }
-      await fresh.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.3)
-      await fresh.waitForTimeout(250)
-      const b3 = await lensBox()
-      if (Math.abs(b3.x - lb.x) > 2) throw new Error('钉住后镜头不应随指针移动')
-      await fresh.mouse.click(cx, cy)
-      await fresh.waitForTimeout(200)
-      if (await fresh.locator('.ff-lens').evaluate((el) => el.classList.contains('pinned'))) {
-        throw new Error('再点应取消钉住')
+      if (pos) {
+        await fresh.mouse.move(pos.x, pos.y)
+        await fresh.waitForTimeout(300)
+        const chip = await fresh.evaluate(() => {
+          const c = document.querySelector('.ff-micro-chip')
+          return c ? { disp: c.style.display, text: c.textContent } : null
+        })
+        if (!chip || chip.disp === 'none') throw new Error('悬停读数条没显示')
+        if (!/I\s*[\d.]/.test(chip.text)) throw new Error('读数条应有 I 数值: ' + chip.text)
+        if (!/v_?d/.test(chip.text) && !/µm\/s/.test(chip.text)) throw new Error('读数条应有 v_d: ' + chip.text)
       }
       await fresh.close()
     })

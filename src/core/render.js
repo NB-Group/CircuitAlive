@@ -13,12 +13,14 @@
  *
  * 电势色阶:发散,OKLab 插值 群青(#2f62a8) ← 纸色 → 朱红(#c8451f),
  * 锚定 φ=0 对称 ±φmax。 */
-import { T, GRID, clamp, lerp, nodeKey, edgeKey, fmt, svgEl } from './util.js';
+import { T, GRID, clamp, lerp, nodeKey, edgeKey, fmt, svgEl, TYPE_NAME } from './util.js';
 import { symbols } from './symbols.js';
 import { solver } from './solver.js';
 import { createBellAudio } from './bell-audio.js';
-import { computeSurfaceCharges, buildPoyntingFlows } from './micro.js';
-import { createLens } from './lens.js';
+import {
+  computeSurfaceCharges, buildPoyntingFlows,
+  lensKindOf, lensFacts, scatterRateOf, createMicroPool, mulberry32
+} from './micro.js';
 
 const G = GRID;
 
@@ -658,15 +660,17 @@ function makeRenderer(svg) {
       });
     }
 
-    /* ---- 真实物理模式的两层 ---- */
+    /* ---- 真实物理模式 ---- */
     if (R.opts.micro && R.opts.surfaceQ) drawSurfaceCharges(m, sol);
+    if (R.opts.micro) drawLattice(m, sol);
+    if (R.opts.micro) drawBatteryForces(m, sol);
     if (R.opts.micro && R.opts.poynting) drawPoynting(m, sol);
 
     syncParticles();
+    syncMicroPools();
     applyProbeMarker();
     applySelection();
-
-    if (R.lens) R.lens.notifySolution();
+    updateMicroChip(true);
   }
 
   /* 表面电荷:σ ∝ (φ − φ̄)。与电势着色同色编码(正朱红/负群青),
@@ -705,6 +709,62 @@ function makeRenderer(svg) {
     });
   }
 
+  /* 晶格正离子:沿每条金属类边两排微点(电子散射的"障碍物")。
+   * 电池边不画(电解质不是金属)。静态 SVG,随 syncSolution 重建。 */
+  function drawLattice(m, sol) {
+    m.edges.forEach((e) => {
+      const I = sol.edgeI.get(e.id);
+      if (lensKindOf(e, I) === 'battery') return;
+      if (e.type === T.VOLTMETER) return;
+      const ax = w2(e.a[0]), ay = w2(e.a[1]), bx = w2(e.b[0]), by = w2(e.b[1]);
+      const dx = bx - ax, dy = by - ay;
+      const nx = -dy / G, ny = dx / G;   /* 单位法向 */
+      for (const side of [-1, 1]) {
+        const g = svgEl('g', { class: 'ff-lattice' }, R.layers.surface);
+        for (let s = 3; s <= G - 3; s += 5) {
+          svgEl('circle', {
+            cx: (ax + dx * s / G + nx * side * 3.1).toFixed(1),
+            cy: (ay + dy * s / G + ny * side * 3.1).toFixed(1),
+            r: 0.75
+          }, g);
+        }
+      }
+    });
+  }
+
+  /* 电池内的对峙力:化学力(朱红,把电子从正极搬向负极)顶着
+   * 静电场力(灰,反向)。画在电池符号上方,微观模式专属。 */
+  function drawBatteryForces(m, sol) {
+    m.edges.forEach((e) => {
+      if (e.type !== T.BATTERY) return;
+      const I = sol.edgeI.get(e.id);
+      if (I == null || Math.abs(I) < 1e-6) return;   /* 断路:无力可画 */
+      const f = lensFacts(e, sol, m.list());
+      if (!f.battery) return;
+      const angle = symbols.angleOf(e.a, e.b);
+      const midX = w2((e.a[0] + e.b[0]) / 2), midY = w2((e.a[1] + e.b[1]) / 2);
+      /* 局部 +x = a→b;放电时电子沿 −x̂(正极→负极) */
+      const mdir = (I > 0) ? -1 : 1;
+      const Lc = clamp(f.battery.Echem / 60, 0.3, 1.3) * 10;
+      const Le = clamp(f.battery.Eelec / 60, 0.3, 1.3) * 8.5;
+      const g = svgEl('g', {
+        class: 'ff-bat-force',
+        transform: 'translate(' + midX + ',' + (midY - 13) + ') rotate(' + angle + ')'
+      }, R.layers.poynting);
+      /* 化学力:沿电子运动方向 */
+      svgEl('line', { x1: 0, y1: -2, x2: mdir * (7 + Lc), y2: -2, class: 'ff-bf-chem' }, g);
+      svgEl('polygon', {
+        points: mdir * (12 + Lc) + ',-2 ' + mdir * (7 + Lc) + ',-4.4 ' + mdir * (7 + Lc) + ',0.4',
+        class: 'ff-bf-chem-head'
+      }, g);
+      /* 静电场力:反向、略短 */
+      svgEl('line', { x1: 0, y1: 3.5, x2: -mdir * (6 + Le), y2: 3.5, class: 'ff-bf-elec' }, g);
+      svgEl('polygon', {
+        points: -mdir * (11 + Le) + ',3.5 ' + -mdir * (6 + Le) + ',1.4 ' + -mdir * (6 + Le) + ',5.6',
+        class: 'ff-bf-elec-head'
+      }, g);
+    });
+  }
   /* 电场箭头:方向 高电势 → 低电势。长度按本电路最大压降自适应 */
   function drawEField(e, U, uRef) {
     const angle = symbols.angleOf(e.a, e.b);
@@ -819,11 +879,11 @@ function makeRenderer(svg) {
     const c = R.pcanvas;
     const electron = !!R.opts.electrons;
 
+    /* 微观模式:画布必须可见(电子海画在上面);粗粒子让位给细密电子 */
     if (c) {
-      /* 只在不一致时改 class,避免每帧重算样式 */
       if (c.__electron !== electron) { c.__electron = electron; c.classList.toggle('electrons', electron); }
       c.classList.toggle('dimmed', !!R.opts.potential);
-      c.hidden = !R.opts.particles;
+      c.hidden = !R.opts.particles && !R.opts.micro;
     }
 
     const seen = new Set();
@@ -877,7 +937,9 @@ function makeRenderer(svg) {
     const c = R.pcanvas, ctx = R.pctx;
     if (!c || !ctx) return;
     ctx.clearRect(0, 0, c.width, c.height);
-    if (c.hidden || !pools.size) return;
+    if (c.hidden) return;
+    if (R.opts.micro) { drawMicroElectrons(ctx); return; }
+    if (!pools.size) return;
     const spr = particleSprites()[R.opts.electrons ? 'electron' : 'current'];
     const r = R.prect;
     const view = R.view;
@@ -920,8 +982,9 @@ function makeRenderer(svg) {
       }
     });
 
+    if (R.opts.micro) microPools.forEach((p) => p.sim.step(dt));
+
     drawParticles();
-    if (R.lens) R.lens.step(dt, now);
 
     /* 灯泡亮度向目标平滑逼近(开关闭合渐亮、断路渐灭、滑片连续调光) */
     lampAnims.forEach((a) => {
@@ -935,10 +998,153 @@ function makeRenderer(svg) {
       symbols.setGlow(a.el, a.cur);
     });
 
-    /* 微观模式的镜头要持续动画(电子海/热运动),即使没有电流 */
-    const lensLive = R.lens && R.lens.active();
-    if (!R.destroyed && (pools.size || !lampsSettled() || lensLive)) R.raf = requestAnimationFrame(tick);
+    /* 微观模式:电子海持续动画(热运动即使无电流也在抖) */
+    const microLive = R.opts.micro && microPools.size;
+    if (!R.destroyed && (pools.size || !lampsSettled() || microLive)) R.raf = requestAnimationFrame(tick);
     else R.raf = null;
+  }
+
+  /* ---------- 真实物理模式:导线原位的细密电子海 ---------- */
+
+  const microPools = new Map();   /* edgeId -> {sim, drift, edge} */
+
+  /* 每条有解的边一个池(断路/电压表也算:drift=0 只抖)。 */
+  function syncMicroPools() {
+    const sol = R.sol;
+    if (!sol || !R.model) { microPools.clear(); return; }
+    const seen = new Set();
+    const edges = R.model.list();
+    R.model.edges.forEach((e) => {
+      const f = lensFacts(e, sol, edges);
+      seen.add(e.id);
+      let p = microPools.get(e.id);
+      if (!p) {
+        p = {
+          sim: createMicroPool(
+            { len: G, band: 2.6, count: 11, drift: f.vdPx, scatter: f.scatter },
+            mulberry32(((e.id * 2654435761) ^ 0x9e3779b9) | 0)
+          ),
+          edge: e
+        };
+        microPools.set(e.id, p);
+      } else {
+        /* 同一条边只改参数:滑片拖动连续过渡,不重播种 */
+        p.sim.setDrift(f.vdPx);
+        p.sim.setScatter(f.scatter);
+        p.edge = e;
+      }
+    });
+    microPools.forEach((p, id) => { if (!seen.has(id)) microPools.delete(id); });
+    if (R.opts.micro) ensureRaf();
+  }
+
+  function drawMicroElectrons(ctx) {
+    const c = R.pcanvas;
+    const r = R.prect, view = R.view;
+    if (!r || !view || r.width < 2) return;
+    const dpr = R.pdpr || 1;
+    const ramp = energizeRamp(performance.now());
+    const scale = r.width / view.w;
+    const spr = particleSprites().electron;
+    const rad = 1.55;                       /* 电子半径,世界 px —— 细密但可辨 */
+
+    microPools.forEach((p) => {
+      const e = p.edge;
+      if (!e) return;
+      const ax = e.a[0] * G, ay = e.a[1] * G, bx = e.b[0] * G, by = e.b[1] * G;
+      const dx = bx - ax, dy = by - ay;
+      const nx = -dy / G, ny = dx / G;
+      const px = rad * 2.2 * scale;        /* sprite 屏幕直径 */
+      for (const a of p.sim.agents) {
+        const wx = ax + dx * a.t + nx * a.y;
+        const wy = ay + dy * a.t + ny * a.y;
+        const sx = (wx - view.x) * scale * dpr;
+        const sy = (wy - view.y) * scale * dpr;
+        if (sx < -px || sy < -px || sx > c.width + px || sy > c.height + px) continue;
+        const bump = 1 + 0.7 * a.flash;    /* 散射一瞬微凸 */
+        const d2 = px * bump * dpr;
+        ctx.globalAlpha = (0.88 + 0.12 * a.flash) * ramp;
+        ctx.drawImage(spr, sx - d2 / 2, sy - d2 / 2, d2, d2);
+      }
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  /* ---------- 悬停读数条(替代旧放大镜) ---------- */
+
+  let chipLastKey = null;
+
+  function ensureMicroChip() {
+    if (R.microChip) return;
+    const host = svg.parentElement;
+    if (!host) return;
+    const d = document.createElement('div');
+    d.className = 'ff-micro-chip';
+    d.setAttribute('aria-hidden', 'true');
+    host.appendChild(d);
+    R.microChip = d;
+  }
+
+  function onMicroChipMove(ev) {
+    if (R.destroyed || !R.microChip) return;
+    if (!R.opts.micro) { R.microChip.style.display = 'none'; return; }
+    const host = svg.parentElement;
+    if (!host) return;
+    const hr = host.getBoundingClientRect();
+    if (ev.clientX < hr.left || ev.clientX > hr.right || ev.clientY < hr.top || ev.clientY > hr.bottom) {
+      R.microChip.style.display = 'none';
+      return;
+    }
+    const wp = screenToWorld(ev.clientX, ev.clientY);
+    const key = hitEdge(wp);
+    R.chipKey = key;
+    R.chipPtr = { x: ev.clientX - hr.left, y: ev.clientY - hr.top, w: hr.width, h: hr.height };
+    updateMicroChip(false);
+  }
+
+  function updateMicroChip(force) {
+    const d = R.microChip;
+    if (!d || !R.opts.micro || !R.model || !R.sol) { if (d) d.style.display = 'none'; return; }
+    if (!R.chipKey || !R.model.edges.get(R.chipKey)) {
+      if (R.chipKey !== chipLastKey || force) { d.style.display = 'none'; chipLastKey = R.chipKey; }
+      return;
+    }
+    const e = R.model.edges.get(R.chipKey);
+    if (e.key !== chipLastKey || force) {
+      chipLastKey = e.key;
+      const sol = R.sol;
+      const f = lensFacts(e, sol, R.model.list());
+      const I = sol.edgeI.get(e.id);
+      let html;
+      if (f.kind === 'battery' && f.battery) {
+        html = '<b>电池</b>' +
+          '<span>E<sub>化</sub> ' + fmt(f.battery.Echem, 'V/m') + ' − E<sub>静</sub> ' + fmt(f.battery.Eelec, 'V/m') +
+          ' = 净驱动 ' + fmt(f.battery.Enet, 'V/m') + '</span>' +
+          '<span>电子:正极 → 负极(与外电路相反)</span>';
+      } else if (f.kind === 'dead') {
+        html = '<b>' + TYPE_NAME[e.type] + ' · 无电流</b>' +
+          '<span>表面电荷的场在内部恰好抵消,E = 0</span>' +
+          '<span>电子仅热运动(原地抖动)</span>';
+      } else {
+        const U = solver.edgeU(e, sol);
+        html = '<b>' + TYPE_NAME[e.type] + '</b>' +
+          '<span>I ' + fmt(Math.abs(I), 'A') + ' · U ' + fmt(Math.abs(U || 0), 'V') +
+          ' · E≈U/L ' + fmt(f.E, 'V/m') + '</span>' +
+          '<span>v<sub>d</sub> ≈ ' + fmt(f.vdSI * 1e6, 'µm/s') + ' · v<sub>d</sub>=eEτ/m,全路同漂移</span>';
+      }
+      d.innerHTML = html;
+    }
+    /* 位置跟随指针,钳在画布内 */
+    const p = R.chipPtr;
+    if (p) {
+      d.style.display = '';
+      const w = d.offsetWidth || 210, h = d.offsetHeight || 64;
+      let x = p.x + 16, y = p.y + 18;
+      if (x + w > p.w - 8) x = p.x - w - 12;
+      if (y + h > p.h - 8) y = p.y - h - 12;
+      d.style.left = x + 'px';
+      d.style.top = y + 'px';
+    }
   }
 
   /* 只在"可见粒子的几何/外观真的变了"时重画。
@@ -946,8 +1152,8 @@ function makeRenderer(svg) {
      所有粒子重建成"两枚新圆点"(位置 0,0 → 首帧才摆好),
      看起来就是整屏闪一下。现在按 id 复用元素,只在数量变化时增删。 */
   function ensureRaf() {
-    const lensLive = R.lens && R.lens.active();
-    if (!R.raf && !R.destroyed && !document.hidden && (pools.size || !lampsSettled() || lensLive)) {
+    const microLive = R.opts.micro && microPools.size;
+    if (!R.raf && !R.destroyed && !document.hidden && (pools.size || !lampsSettled() || microLive)) {
       R.lastT = performance.now();
       R.raf = requestAnimationFrame(tick);
     }
@@ -1061,17 +1267,11 @@ function makeRenderer(svg) {
   buildDefs();
   buildGrid();      /* 必须在 buildDefs 之后:pattern 定义在 defs 里 */
   applyView();
+  ensureMicroChip();
 
-  /* 显微镜头:惰性建 DOM(首次开微观才出现),自听 window 指针,
-   * 画布组件零改动。pinned 锚点换算在每帧 step 里做,无需订阅 viewport。 */
-  R.lens = createLens(svg.parentElement, {
-    screenToWorld,
-    hitEdge,
-    view: () => R.view,
-    getModel: () => R.model,
-    getSol: () => R.sol,
-    getOpts: () => R.opts
-  });
+  /* 悬停读数条:微观模式下跟着指针,显示所在边的 I/U/E/v_d。
+   * 自听 window 指针,画布组件零改动。 */
+  window.addEventListener('pointermove', onMicroChipMove, { passive: true });
 
   let ro = null;
   if (typeof ResizeObserver !== 'undefined') {
@@ -1083,7 +1283,8 @@ function makeRenderer(svg) {
 
   function destroy() {
     R.destroyed = true;
-    if (R.lens) R.lens.destroy();
+    window.removeEventListener('pointermove', onMicroChipMove);
+    if (R.microChip && R.microChip.parentElement) R.microChip.remove();
     if (R.pcanvas && R.pctx) R.pctx.clearRect(0, 0, R.pcanvas.width, R.pcanvas.height);
     if (R.pcanvas && R.pcanvas.parentElement) R.pcanvas.remove();
     if (R.ovSvg && R.ovSvg.parentElement) R.ovSvg.remove();
@@ -1118,7 +1319,6 @@ function makeRenderer(svg) {
 
     setOpts(opts) {
       Object.assign(R.opts, opts || {});
-      if (R.lens) R.lens.setActive(!!R.opts.micro);
       if (R.sol) syncSolution();
       ensureRaf();
     },
