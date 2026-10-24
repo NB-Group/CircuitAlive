@@ -559,6 +559,17 @@ html[data-theme='dark'] .ff-canvas [data-layer="underlay"] { opacity: 0.55; }
 .ff-canvas .ff-bf-chem-head { fill: var(--vermilion); stroke: none; }
 .ff-canvas .ff-bf-elec { stroke: var(--ink-soft); stroke-width: 1.3; stroke-linecap: round; opacity: 0.85; }
 .ff-canvas .ff-bf-elec-head { fill: var(--ink-soft); stroke: none; opacity: 0.85; }
+.ff-canvas .ff-bf-label {
+  font-family: var(--serif);
+  font-size: 7.5px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--paper);
+  stroke-opacity: 0.9;
+  stroke-width: 2.5px;
+}
+.ff-canvas .ff-bf-chem-label { fill: var(--vermilion); }
+.ff-canvas .ff-bf-elec-label { fill: var(--ink-soft); }
 
 /* 悬停读数条:微观模式下跟着指针,显示所在边的 I/U/E/v_d */
 .ff-canvas .ff-micro-chip {

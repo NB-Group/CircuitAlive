@@ -490,9 +490,22 @@ async function main() {
       const lattice = await fresh.evaluate(() => document.querySelectorAll('[data-layer="surface"] .ff-lattice circle').length)
       if (lattice < 40) throw new Error('晶格点太少: ' + lattice)
 
-      /* 电池对峙力箭头(电路通电才有) */
+      /* 电池对峙力箭头(电路通电才有)+ 原位文字标注 */
       const bf = await fresh.evaluate(() => document.querySelectorAll('.ff-bat-force').length)
       if (bf < 1) throw new Error('电池力箭头没画')
+      const bfl = await fresh.evaluate(() => document.querySelectorAll('.ff-bf-label').length)
+      if (bfl < 2) throw new Error('电池力应有 化学力/静电场力 文字标注')
+
+      /* 图例卡片:开微观即出现,内容讲明每样东西;× 可收起 */
+      const legend = fresh.locator('.micro-legend')
+      if (!(await legend.isVisible())) throw new Error('图例没显示')
+      const ltext = await legend.textContent()
+      for (const kw of ['电子', '晶格', '表面电荷', '能量流', 'v', 'nqA']) {
+        if (!ltext.includes(kw)) throw new Error('图例缺少解释: ' + kw)
+      }
+      await fresh.locator('.micro-legend-x').click()
+      await fresh.waitForTimeout(150)
+      if (await fresh.evaluate(() => !!document.querySelector('.micro-legend'))) throw new Error('× 应收起图例')
 
       /* 关掉粗粒子电流:微观模式下画布仍要可见(电子海画在上面) */
       await fresh.getByRole('button', { name: '电流', exact: true }).click()

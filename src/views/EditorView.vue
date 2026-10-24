@@ -45,6 +45,8 @@ const opts = ref({
 })
 /* 「微观」子图层小菜单(表面电荷/能量流);点外面收起 */
 const microMenu = ref(false)
+/* 图例卡片:微观模式的"画的是什么"说明书,关掉可从菜单重开 */
+const microLegend = ref(true)
 /* 电铃声音开关(状态读写都在 bell-toggle 里,localStorage 持久化) */
 const bellOn = ref(bellSoundOn())
 
@@ -400,6 +402,7 @@ const stateText = computed(() => {
           <div v-if="microMenu" class="micro-pop" @pointerdown.stop @click.stop>
             <label><input type="checkbox" v-model="opts.surfaceQ">表面电荷</label>
             <label><input type="checkbox" v-model="opts.poynting">能量流</label>
+            <label><input type="checkbox" v-model="microLegend">图例</label>
           </div>
         </span>
         <button class="ff-btn ghost" :class="{ on: bellOn }" @click="toggleBell" title="电铃声音">铃音</button>
@@ -489,6 +492,34 @@ const stateText = computed(() => {
         @escape="setTool('select')"
       />
 
+      <!-- 真实物理模式图例:画布上每样东西是什么、因果链是什么 -->
+      <div v-if="opts.micro && microLegend" class="micro-legend">
+        <button type="button" class="micro-legend-x" aria-label="收起图例" @click="microLegend = false">×</button>
+        <div class="micro-legend-title">真实物理模式</div>
+        <div class="ml-row">
+          <svg viewBox="0 0 20 12" class="ml-swatch"><circle cx="10" cy="6" r="3" fill="#2f62a8"/></svg>
+          <span><b>电子</b> —— 被电场推着缓慢漂移;串联各段速度相同</span>
+        </div>
+        <div class="ml-row">
+          <svg viewBox="0 0 20 12" class="ml-swatch"><circle cx="5" cy="6" r="1.4" fill="#a89d8c"/><circle cx="10" cy="6" r="1.4" fill="#a89d8c"/><circle cx="15" cy="6" r="1.4" fill="#a89d8c"/></svg>
+          <span><b>晶格正离子</b> —— 电子在上面磕绊;电阻 = 磕绊频繁,所以要更大的 E 才维持同一速度</span>
+        </div>
+        <div class="ml-row">
+          <svg viewBox="0 0 20 12" class="ml-swatch"><path d="M10 2 v8 M6 6 h8" stroke="#c8451f" stroke-width="1.6"/><path d="M18 6 h-5" stroke="#2f62a8" stroke-width="1.6"/></svg>
+          <span><b>表面电荷</b> —— 导线表面带的电,它们的合场在推电子;电阻两端堆积最密(那里 E 最大)</span>
+        </div>
+        <div class="ml-row">
+          <svg viewBox="0 0 20 12" class="ml-swatch"><path d="M2 6 C7 1 13 11 18 6" stroke="#9a6b1f" stroke-width="1.6" fill="none" stroke-dasharray="3 3"/></svg>
+          <span><b>能量流</b> —— 能量不随电子走,从电池经周围空间流进电阻</span>
+        </div>
+        <div class="ml-row">
+          <svg viewBox="0 0 20 12" class="ml-swatch"><path d="M3 3 h10" stroke="#c8451f" stroke-width="1.8"/><path d="M3 9 h7" stroke="#6f6557" stroke-width="1.5"/></svg>
+          <span><b>电池内</b> —— 化学力(红)顶着静电场力(灰)把电子从正极搬回负极</span>
+        </div>
+        <div class="ml-chain">电池 → 表面电荷 → 电场 E → 漂移 v<sub>d</sub>=eEτ/m → 电流 I = nqA·v<sub>d</sub></div>
+        <div class="ml-hint">悬停任意一段看 I · U · E · v<sub>d</sub></div>
+      </div>
+
       <RheostatPopover
         :model="model"
         :solution="solution"
@@ -563,6 +594,65 @@ const stateText = computed(() => {
   white-space: nowrap;
 }
 .micro-pop input { accent-color: var(--vermilion); }
+
+/* 真实物理模式图例:画布右下角,小卡 + 行内小样 */
+.micro-legend {
+  position: absolute;
+  right: 14px;
+  bottom: 30px;
+  z-index: 6;
+  width: min(340px, calc(100vw - 160px));
+  padding: 10px 12px 9px;
+  background: var(--paper-panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: 0 3px 14px rgba(44, 40, 34, 0.18);
+  pointer-events: auto;
+}
+.micro-legend-title {
+  font-family: var(--serif);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 7px;
+}
+.micro-legend-x {
+  position: absolute;
+  top: 4px; right: 7px;
+  border: none; background: transparent;
+  font-size: 15px; line-height: 1;
+  color: var(--ink-faint);
+  cursor: pointer; padding: 2px 4px;
+}
+.micro-legend-x:hover { color: var(--ink); }
+.ml-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  padding: 2.5px 0;
+}
+.ml-row b { color: var(--ink); }
+.ml-swatch { flex: none; width: 30px; height: 18px; margin-top: 1px; }
+.ml-chain {
+  margin-top: 7px;
+  padding: 5px 7px;
+  border-top: 1px dashed var(--hairline);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink);
+}
+.ml-hint {
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+@media (max-width: 700px) {
+  .micro-legend { right: 8px; bottom: 26px; width: min(280px, calc(100vw - 110px)); }
+}
 .state {
   margin-left: auto; font-family: var(--mono); font-size: 12px;
   padding: 2px 10px; border: 1px solid var(--hairline); border-radius: var(--radius);

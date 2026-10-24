@@ -763,6 +763,15 @@ function makeRenderer(svg) {
         points: -mdir * (11 + Le) + ',3.5 ' + -mdir * (6 + Le) + ',1.4 ' + -mdir * (6 + Le) + ',5.6',
         class: 'ff-bf-elec-head'
       }, g);
+      /* 原位文字标注(不随边旋转,和符号文字层同一策略) */
+      const [c1x, c1y] = localToWorld(e, mdir * (14 + Lc) + mdir * 4, -13 - 2.5);
+      const t1 = svgEl('text', { x: c1x, y: c1y, class: 'ff-bf-label ff-bf-chem-label',
+        'text-anchor': 'middle' }, R.layers.poynting);
+      t1.textContent = '化学力';
+      const [c2x, c2y] = localToWorld(e, -mdir * (13 + Le) - mdir * 4, -13 + 4 + 3);
+      const t2 = svgEl('text', { x: c2x, y: c2y, class: 'ff-bf-label ff-bf-elec-label',
+        'text-anchor': 'middle' }, R.layers.poynting);
+      t2.textContent = '静电场力';
     });
   }
   /* 电场箭头:方向 高电势 → 低电势。长度按本电路最大压降自适应 */
