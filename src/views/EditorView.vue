@@ -506,7 +506,7 @@ const stateText = computed(() => {
         </div>
         <div class="ml-row">
           <svg viewBox="0 0 20 12" class="ml-swatch"><path d="M10 2 v8 M6 6 h8" stroke="#c8451f" stroke-width="1.6"/><path d="M18 6 h-5" stroke="#2f62a8" stroke-width="1.6"/></svg>
-          <span><b>表面电荷</b> —— 导线表面带的电,它们的合场在推电子;电阻两端堆积最密(那里 E 最大)</span>
+          <span><b>表面电荷</b> —— 导线表面带的电,合场在推电子;电阻两端堆积最密(E 最大)。分布不是天生的:接通瞬间哪里堵,斥力就把哪里调开,<b>负反馈自动调成刚好</b></span>
         </div>
         <div class="ml-row">
           <svg viewBox="0 0 20 12" class="ml-swatch"><path d="M2 6 C7 1 13 11 18 6" stroke="#9a6b1f" stroke-width="1.6" fill="none" stroke-dasharray="3 3"/></svg>
@@ -517,7 +517,7 @@ const stateText = computed(() => {
           <span><b>电池内</b> —— 化学力(红)顶着静电场力(灰)把电子从正极搬回负极</span>
         </div>
         <div class="ml-chain">电池 → 表面电荷 → 电场 E → 漂移 v<sub>d</sub>=eEτ/m → 电流 I = nqA·v<sub>d</sub></div>
-        <div class="ml-hint">悬停任意一段看 I · U · E · v<sub>d</sub></div>
+        <div class="ml-hint">悬停任意一段看 I · U · E · v<sub>d</sub> · 电子速度为示意 —— 真实漂移还要慢千倍,热运动则快十亿倍</div>
       </div>
 
       <RheostatPopover

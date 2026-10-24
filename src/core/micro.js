@@ -302,11 +302,12 @@ export function lensFacts(e, sol, edges) {
     E: 0, vdSI: 0,        /* 显示值:V/m 与 m/s */
     battery: null
   };
-  /* 漂移的视觉速度:10..60 px/s ∝ |I|/Imax,方向 = −sign(I)·x̂。
-   * 金属与电池统一 —— 电池内 I>0(放电)时电子同样沿 −x̂(正极→负极)。 */
+  /* 漂移的视觉速度:2.5..12 px/s ∝ |I|/Imax,方向 = −sign(I)·x̂。
+   * 真实 v_d ≈ 0.1 mm/s,穿一条 10 cm 导线要二十多分钟 —— 画面只求
+   * "看得出在爬"(一条格边 3~16 s),图例注明是示意。 */
   const imax = sol ? (sol.Imax || 0) : 0;
   if (kind !== 'dead' && I != null && Math.abs(I) >= OPEN_I && imax > 0) {
-    out.vdPx = -Math.sign(I) * (10 + 50 * clamp(Math.abs(I) / imax, 0, 1));
+    out.vdPx = -Math.sign(I) * (2.5 + 9.5 * clamp(Math.abs(I) / imax, 0, 1));
   }
   if (kind === 'battery' && sol) {
     const U = solver.edgeU(e, sol);       /* 端电压 φb−φa */
@@ -348,7 +349,7 @@ export function createMicroPool(opts, rng) {
   const band = opts.band || 2.6;       /* 电子偏离导线中线的半宽 */
   const rand = rng || mulberry32(42);
   const count = opts.count || 11;
-  const VY = 9;                        /* 热速度 px/s(垂直方向) */
+  const VY = 6;                        /* 热速度 px/s(垂直方向,示意) */
 
   const agents = [];
   for (let i = 0; i < count; i++) {
