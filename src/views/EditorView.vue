@@ -3,7 +3,7 @@
  *
  * 职责:持有 Model 与求解结果,把画布、元件栏、检查器、分析面板组装起来。
  * 具体渲染/交互逻辑在 CircuitCanvas 与 InspectorPopover 中。 */
-import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, shallowRef, computed, watch, defineAsyncComponent, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Model } from '../core/model.js'
 import { solver } from '../core/solver.js'
@@ -21,6 +21,8 @@ import MathText from '../components/MathText.vue'
 import MeterDial from '../components/MeterDial.vue'
 import RheostatPopover from '../components/RheostatPopover.vue'
 import TutorialOverlay from '../components/TutorialOverlay.vue'
+/* 电势地形 3D 附加预览:懒加载,three.js 不进主包 */
+const Terrain3D = defineAsyncComponent(() => import('../components/Terrain3D.vue'))
 import { useOnboarding } from '../composables/useOnboarding.js'
 
 const props = defineProps({ theme: String, id: String })
@@ -41,7 +43,8 @@ const opts = ref({
   efield: false,
   micro: false,
   surfaceQ: true,
-  poynting: true
+  poynting: true,
+  terrain3d: false
 })
 /* 「微观」子图层小菜单(表面电荷/能量流);点外面收起 */
 const microMenu = ref(false)
@@ -395,6 +398,7 @@ const stateText = computed(() => {
         <button class="ff-btn ghost" :class="{ on: opts.electrons }" :aria-pressed="opts.electrons" @click="setFlow('electron')">电子流向</button>
         <button class="ff-btn ghost" :class="{ on: opts.potential }" @click="toggle('potential')">电势</button>
         <button class="ff-btn ghost" :class="{ on: opts.phiLabels }" @click="toggle('phiLabels')">电势数值</button>
+        <button class="ff-btn ghost" :class="{ on: opts.terrain3d }" :aria-pressed="opts.terrain3d" title="电势地形 3D 附加预览:导线=平地,电阻=斜坡,电池=电梯" @click="toggle('terrain3d')">3D</button>
         <button class="ff-btn ghost" :class="{ on: opts.efield }" @click="toggle('efield')">电场</button>
         <span class="micro-ctl">
           <button class="ff-btn ghost" :class="{ on: opts.micro }" :aria-pressed="opts.micro" @click="toggle('micro')" title="真实物理模式:表面电荷 · 显微镜头 · 能量流">微观</button>
@@ -478,19 +482,29 @@ const stateText = computed(() => {
         </div>
       </aside>
 
-      <CircuitCanvas
-        :model="model"
-        :solution="solution"
-        :opts="opts"
-        :tool="tool"
-        :armed="armed"
-        @select="onSelect"
-        @edge-click="onEdgeClick"
-        @wiper-open="onWiperOpen"
-        @placed="onPlaced"
-        @changed="resolve"
-        @escape="setTool('select')"
-      />
+      <div class="canvas-slot">
+        <CircuitCanvas
+          :model="model"
+          :solution="solution"
+          :opts="opts"
+          :tool="tool"
+          :armed="armed"
+          @select="onSelect"
+          @edge-click="onEdgeClick"
+          @wiper-open="onWiperOpen"
+          @placed="onPlaced"
+          @changed="resolve"
+          @escape="setTool('select')"
+        />
+        <!-- 电势地形 3D:附加预览,盖在画布区上,× 或再点「3D」关闭 -->
+        <Terrain3D
+          v-if="opts.terrain3d"
+          :model="model"
+          :solution="solution"
+          :opts="opts"
+          @close="toggle('terrain3d')"
+        />
+      </div>
 
       <!-- 真实物理模式图例:画布上每样东西是什么、因果链是什么 -->
       <div v-if="opts.micro && microLegend" class="micro-legend">
@@ -661,6 +675,8 @@ const stateText = computed(() => {
 .state.open { border-color: var(--amber); color: var(--amber); }
 
 .body { flex: 1; display: flex; min-height: 0; position: relative; }
+/* 画布槽:2D 画布与 3D 地形预览共用这块区域 */
+.canvas-slot { position: relative; flex: 1 1 auto; min-width: 0; display: flex; }
 .palette { width: 96px; flex: none; background: var(--paper-panel); border-right: 1px solid var(--hairline); overflow-y: auto; padding: 8px 0; }
 .pal-title { font-family: var(--serif); font-size: 11px; letter-spacing: 4px; color: var(--ink-faint); text-align: center; padding: 2px 0 6px; }
 .pal-btn {

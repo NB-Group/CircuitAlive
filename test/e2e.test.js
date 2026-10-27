@@ -537,6 +537,37 @@ async function main() {
       await fresh.close()
     })
 
+    await test('3D 电势地形:开关、画布、翻转、关闭', async () => {
+      const fresh = await ctx.newPage()
+      await fresh.goto(base + '#/problem/r-2024-19', { waitUntil: 'networkidle' })
+      await fresh.waitForSelector('.ff-stage')
+      await fresh.waitForTimeout(500)
+      const btn = fresh.getByRole('button', { name: '3D', exact: true })
+      await btn.click()
+      await fresh.waitForSelector('.ff-3d-cv', { timeout: 8000 })
+      await fresh.waitForTimeout(1500)
+      if (!(await fresh.locator('.ff-3d-cv').isVisible())) throw new Error('3D 画布不可见')
+      const chip = await fresh.locator('.ff-3d-chip').textContent()
+      if (!chip.includes('电势地形')) throw new Error('读数卡应为电势地形')
+      if (!chip.includes('φ')) throw new Error('应显示高度含义')
+      /* 切电子视角:地形翻转,不报错 */
+      await fresh.getByRole('button', { name: '电子流向' }).click()
+      await fresh.waitForTimeout(900)
+      const chip2 = await fresh.locator('.ff-3d-chip').textContent()
+      if (!chip2.includes('−φ') && !chip2.includes('-φ')) throw new Error('电子视角应显示 −φ: ' + chip2)
+      await fresh.getByRole('button', { name: '电子流向' }).click()
+      await fresh.waitForTimeout(600)
+      /* × 关闭 → 回 2D */
+      await fresh.locator('.ff-3d-x').click()
+      await fresh.waitForTimeout(400)
+      if (await fresh.evaluate(() => !!document.querySelector('.ff-3d'))) throw new Error('× 应关闭 3D')
+      if (!(await fresh.locator('svg.ff-stage').first().isVisible())) throw new Error('2D 画布应回来')
+      /* 再开一次(异步组件缓存路径) */
+      await btn.click()
+      await fresh.waitForSelector('.ff-3d-cv', { timeout: 8000 })
+      await fresh.close()
+    })
+
     await test('单击滑变弹出滑条,拖动实时改阻值,一次拖动一步撤销', async () => {
       await page.goto(base + '#/problem/r-2013-22', { waitUntil: 'networkidle' })
       await page.waitForSelector('[data-hook="wiper"]', { state: 'attached' })

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node test/solver.test.js && node test/share.test.js && node test/interaction.test.js && node test/micro.test.js",
+    "test": "node test/solver.test.js && node test/share.test.js && node test/interaction.test.js && node test/micro.test.js && node test/terrain.test.js",
     "test:e2e": "npm run build && node test/e2e.test.js",
     "test:all": "npm test && npm run test:e2e"
   },
@@ -15,6 +15,7 @@
     "elkjs": "^0.12.0",
     "katex": "^0.16.11",
     "netlistsvg": "^1.0.2",
+    "three": "^0.186.1",
     "vue": "^3.5.42",
     "vue-router": "^4.5.0"
   },

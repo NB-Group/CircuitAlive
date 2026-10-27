@@ -13,7 +13,7 @@
  *
  * 电势色阶:发散,OKLab 插值 群青(#2f62a8) ← 纸色 → 朱红(#c8451f),
  * 锚定 φ=0 对称 ±φmax。 */
-import { T, GRID, clamp, lerp, nodeKey, edgeKey, fmt, svgEl, TYPE_NAME } from './util.js';
+import { T, GRID, clamp, lerp, nodeKey, edgeKey, fmt, svgEl, TYPE_NAME, phiColorAt } from './util.js';
 import { symbols } from './symbols.js';
 import { solver } from './solver.js';
 import { createBellAudio } from './bell-audio.js';
@@ -24,59 +24,11 @@ import {
 
 const G = GRID;
 
-/* ---------- OKLab 颜色 ---------- */
-function hexToRgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
-function s2l(c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
-function l2s(c) { return 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055); }
-
-function rgbToOklab(rgb) {
-  const r = s2l(rgb[0]), g = s2l(rgb[1]), b = s2l(rgb[2]);
-  const l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
-  const m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
-  const s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b;
-  const l_ = Math.cbrt(l), m_ = Math.cbrt(m), s_ = Math.cbrt(s);
-  return [
-    0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
-    1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
-    0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
-  ];
-}
-
-function oklabToHex(lab) {
-  const l_ = lab[0] + 0.3963377774 * lab[1] + 0.2158037573 * lab[2];
-  const m_ = lab[0] - 0.1055613458 * lab[1] - 0.0638541728 * lab[2];
-  const s_ = lab[0] - 0.0894841775 * lab[1] - 1.2914855480 * lab[2];
-  const l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
-  const r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
-  const g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
-  const b = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
-  function ch(c) { c = Math.round(l2s(Math.min(1, Math.max(0, c)))); const h = c.toString(16); return h.length < 2 ? '0' + h : h; }
-  return '#' + ch(r) + ch(g) + ch(b);
-}
-
-const PAPER = '#f7f2e5', VERMILION = '#c8451f', INDIGO = '#2f62a8';
-const LAB_PAPER = rgbToOklab(hexToRgb(PAPER));
-const LAB_HI = rgbToOklab(hexToRgb(VERMILION));
-const LAB_LO = rgbToOklab(hexToRgb(INDIGO));
-
+/* ---------- OKLab 电势色阶(实现移至 util.phiColorAt,这里带 φ 量程缓存) ---------- */
 let phiMaxScale = 1;
 const colorCache = new Map();
 
-export function phiColor(phi) {
-  if (phi == null) return '#b4a996';
-  const t = clamp(phi / phiMaxScale, -1, 1);
-  const key = Math.round(t * 128);
-  const c = colorCache.get(key);
-  if (c) return c;
-  const lab = t >= 0 ? LAB_HI : LAB_LO, a = Math.abs(t);
-  const out = oklabToHex([
-    LAB_PAPER[0] + (lab[0] - LAB_PAPER[0]) * a,
-    LAB_PAPER[1] + (lab[1] - LAB_PAPER[1]) * a,
-    LAB_PAPER[2] + (lab[2] - LAB_PAPER[2]) * a
-  ]);
-  colorCache.set(key, out);
-  return out;
-}
+export function phiColor(phi) { return phiColorAt(phi, phiMaxScale); }
 
 export function setPhiScale(m) { phiMaxScale = Math.max(m, 0.05); }
 
